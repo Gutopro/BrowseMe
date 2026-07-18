@@ -1,0 +1,259 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+
+// ============================================================
+// BrowseMe — core contract (v0.1 draft)
+// Implements: §8.1 ledger state, §8.2 structs, §8.3 circuit
+// boundaries, and the security notes in §9.
+// ============================================================
+
+// ---- Enums ----
+
+export enum Track { TRACK_A, TRACK_B }
+export enum Status { INVESTING, OPEN }
+export enum AttesterType { COMMUNITY, RELIGIOUS, UNION, EDUCATION }
+
+// ---- Structs (§8.2) ----
+
+struct BusinessListing {
+  track: Track,
+  tier: Uint<8>,          // 0 = pending/unlisted, 1 = T1 (highest) .. 3 = T3
+  status: Status,
+  sector: Bytes<32>,      // coarse — promoted field, §6
+  location: Bytes<32>,    // coarse — promoted field, §6
+  commitment: Bytes<32>,  // hash of full private BusinessForm
+  listed: Boolean         // true once publicly discoverable (§4.2)
+}
+
+struct HandshakeState {
+  investorId: Bytes<32>,
+  businessId: Uint<64>,
+  investorDataStaged: Boolean,
+  shaken: Boolean,
+  unshaken: Boolean
+}
+
+// ---- Witnesses ----
+
+witness callerAddress(): Bytes<32>;  // caller's wallet-derived address, supplied by the DApp
+
+// ---- Public ledger state (§8.1) ----
+
+export ledger businesses: Map<Uint<64>, BusinessListing>;
+export ledger nextBusinessId: Uint<64>;
+export ledger businessOwners: Map<Uint<64>, Bytes<32>>;      // businessId -> registering caller's address
+
+export ledger investors: Map<Bytes<32>, Bytes<32>>;          // investorId (caller address) -> commitment
+export ledger attestationCounts: Map<Uint<64>, Uint<8>>;
+export ledger hasUnionAttestation: Map<Uint<64>, Boolean>;   // enforces §9.3 union requirement
+export ledger attestationNullifiers: Set<Bytes<32>>;         // prevents duplicate attestations (§9.3)
+
+export ledger pendingHandshakes: Map<Bytes<32>, HandshakeState>; // keyed by nonce (§9.4: single-use)
+
+constructor() {
+  nextBusinessId = 1;
+}
+
+// ============================================================
+// Investor registration
+// ============================================================
+
+export circuit registerInvestor(investorCommitment: Bytes<32>): Bytes<32> {
+  const caller = disclose(callerAddress());
+  investors.insert(caller, disclose(investorCommitment));
+  return caller;
+}
+
+// ============================================================
+// Business registration — Track A (§4.1)
+// ============================================================
+
+export circuit registerBusinessTrackA(
+  businessCommitment: Bytes<32>,  // hash of full private BusinessForm
+  sector: Bytes<32>,
+  location: Bytes<32>
+): Uint<64> {
+  const id = nextBusinessId;
+  const caller = disclose(callerAddress());
+
+  businesses.insert(id, BusinessListing {
+    track: Track.TRACK_A,
+    tier: 2,                       // baseline tier for formal registration — see §12 open question
+    status: Status.OPEN,
+    sector: disclose(sector),
+    location: disclose(location),
+    commitment: disclose(businessCommitment),
+    listed: true                   // Track A: registration alone is sufficient (§4.1)
+  });
+  businessOwners.insert(id, caller);
+  nextBusinessId = disclose((nextBusinessId + 1) as Uint<64>);
+  return id;
+}
+
+// ============================================================
+// Business registration — Track B (§4.2)
+// ============================================================
+
+export circuit registerBusinessTrackB(
+  businessCommitment: Bytes<32>,
+  sector: Bytes<32>,
+  location: Bytes<32>
+): Uint<64> {
+  const id = nextBusinessId;
+  const caller = disclose(callerAddress());
+
+  businesses.insert(id, BusinessListing {
+    track: Track.TRACK_B,
+    tier: 0,                       // withheld until attestation threshold reached
+    status: Status.OPEN,
+    sector: disclose(sector),
+    location: disclose(location),
+    commitment: disclose(businessCommitment),
+    listed: false                  // not discoverable until threshold met (§4.2)
+  });
+  businessOwners.insert(id, caller);
+  attestationCounts.insert(id, 0);
+  hasUnionAttestation.insert(id, false);
+  nextBusinessId = disclose((nextBusinessId + 1) as Uint<64>);
+  return id;
+}
+
+// ============================================================
+// Attestations (§4.2, §9.3, §10.2)
+// ============================================================
+
+export circuit submitAttestation(
+  businessId: Uint<64>,
+  attesterType: AttesterType,
+  attesterCommitment: Bytes<32>   // hash of attester identity, never plaintext (§9.3)
+): [] {
+  const id = disclose(businessId);
+  assert(businesses.member(id), "business does not exist");
+
+  const listing = businesses.lookup(id);
+  assert(listing.track == Track.TRACK_B, "attestations only apply to Track B businesses");
+
+  const currentCount = attestationCounts.lookup(id);
+  assert(currentCount < 4, "maximum of 4 attestations reached");
+
+  // reject duplicate attester/business pairs via nullifier (§9.3)
+  const nul = disclose(attestationNullifier(attesterCommitment, id));
+  assert(!attestationNullifiers.member(nul), "attester already attested for this business");
+  attestationNullifiers.insert(nul);
+
+  const newCount = disclose((currentCount + 1) as Uint<8>);
+  attestationCounts.insert(id, newCount);
+
+  const publicType = disclose(attesterType);
+  if (publicType == AttesterType.UNION) {
+    hasUnionAttestation.insert(id, true);
+  }
+
+  // incremental tier recompute — only when threshold is crossed (§10.2),
+  // and only once the required union attestation is present (§9.3, §4.2)
+  if (newCount >= 2 && hasUnionAttestation.lookup(id)) {
+    businesses.insert(id, BusinessListing {
+      track: listing.track,
+      tier: tierForCount(newCount),
+      status: listing.status,
+      sector: listing.sector,
+      location: listing.location,
+      commitment: listing.commitment,
+      listed: true
+    });
+  }
+}
+
+// Placeholder scoring: simple count threshold. Flagged as an open
+// question in §12 — may need to become type-weighted rather than
+// count-only once the diversity requirement is finalized.
+pure circuit tierForCount(count: Uint<8>): Uint<8> {
+  if (count >= 4) {
+    return 1;   // T1
+  } else {
+    if (count >= 3) {
+      return 2; // T2
+    } else {
+      return 3; // T3
+    }
+  }
+}
+
+pure circuit attestationNullifier(attesterCommitment: Bytes<32>, businessId: Uint<64>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>(
+    [pad(32, "browseme:attestation:v1"), attesterCommitment, businessId as Field as Bytes<32>]
+  );
+}
+
+// ============================================================
+// Handshake protocol (§7, §8.3, §9.4)
+// ============================================================
+
+export circuit initiateHandshake(nonce: Bytes<32>, businessId: Uint<64>): [] {
+  const n = disclose(nonce);
+  const id = disclose(businessId);
+  const investor = disclose(callerAddress());
+
+  assert(!pendingHandshakes.member(n), "nonce already used");
+  assert(businesses.member(id), "business does not exist");
+  assert(businesses.lookup(id).listed, "business is not listed");
+  assert(investors.member(investor), "caller is not a registered investor");
+
+  pendingHandshakes.insert(n, HandshakeState {
+    investorId: investor,       // derived from caller, not passed in — prevents impersonation
+    businessId: id,
+    investorDataStaged: true,   // investor data copied out of private state and staged, not yet delivered (§7.1)
+    shaken: false,
+    unshaken: false
+  });
+}
+
+export circuit shake(nonce: Bytes<32>): [] {
+  const n = disclose(nonce);
+  assert(pendingHandshakes.member(n), "no such handshake");
+
+  const hs = pendingHandshakes.lookup(n);
+  assert(!hs.shaken && !hs.unshaken, "handshake already resolved");
+  assert(hs.investorDataStaged, "investor data was never staged");
+
+  const caller = disclose(callerAddress());
+  assert(businessOwners.lookup(hs.businessId) == caller, "only the business owner can shake");
+
+  pendingHandshakes.insert(n, HandshakeState {
+    investorId: hs.investorId,
+    businessId: hs.businessId,
+    investorDataStaged: hs.investorDataStaged,
+    shaken: true,
+    unshaken: false
+  });
+  // Symmetric delivery of investor data -> business and business data ->
+  // investor (§7.2) happens off-chain, driven by the DApp/witness layer
+  // once it observes `shaken == true`. The ledger only records that both
+  // parties are now mutually entitled to each other's data.
+}
+
+export circuit unshake(nonce: Bytes<32>): [] {
+  const n = disclose(nonce);
+  assert(pendingHandshakes.member(n), "no such handshake");
+
+  const hs = pendingHandshakes.lookup(n);
+  assert(!hs.unshaken, "already unshaken");
+
+  const caller = disclose(callerAddress());
+  const isInvestor = caller == hs.investorId;
+  const isBusinessOwner = caller == businessOwners.lookup(hs.businessId);
+  assert(isInvestor || isBusinessOwner, "only a party to this handshake can unshake");
+
+  pendingHandshakes.insert(n, HandshakeState {
+    investorId: hs.investorId,
+    businessId: hs.businessId,
+    investorDataStaged: false,
+    shaken: false,
+    unshaken: true
+  });
+  // Callable unilaterally by either party at any point, before or after
+  // Shake (§7.1, §9.4/§9.5) — no counterparty cooperation required.
+  // Clearing the flags is the on-chain signal for the off-chain layer to
+  // destroy any staged or exchanged data tied to this nonce.
+}
