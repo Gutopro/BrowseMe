@@ -11,7 +11,7 @@ export default function Page() {
       {/* Hero Section */}
       <div className="mb-12">
         <h1 className="text-4xl lg:text-5xl font-bold text-balance mb-4">
-          Welcome to <span className="linear-primary bg-clip-text text-transparent">BrowseMe</span>
+          Welcome to <span className="gradient-primary bg-clip-text text-transparent">BrowseMe</span>
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mb-8">
           Discover opportunities, connect with innovators, and grow your fintech presence in our exclusive marketplace.

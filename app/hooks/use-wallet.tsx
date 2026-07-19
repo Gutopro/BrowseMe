@@ -7,7 +7,7 @@ interface WalletContextType {
   address: string | null;
   balance: string | null;
   connecting: boolean;
-  connect: () => Promise<void>;
+  connect: (walletName: string) => Promise<void>;
   disconnect: () => void;
   error: string | null;
 }
@@ -20,11 +20,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [balance, setBalance] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Use a ref to track if we are doing auto-connect to avoid race conditions
   const autoConnectAttempted = useRef(false);
 
-  // --- SAFE BALANCE PARSING (kept from before) ---
+  // --- SAFE BALANCE PARSING (same as before) ---
   const parseBalance = (raw: any): string => {
     if (raw === null || raw === undefined) return '0.00';
     let balanceString = '';
@@ -54,36 +52,30 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return (lovelace / 1_000_000).toFixed(2);
   };
 
-  // --- CORE CONNECT LOGIC (Resilient to Shutdown) ---
-  const connect = async (): Promise<void> => {
+  // --- CONNECT with wallet selection ---
+  const connect = async (walletName: string): Promise<void> => {
     setError(null);
     setConnecting(true);
 
     try {
-      // 1. Check wallet presence
       if (!window.cardano) {
         throw new Error('No wallet found. Please install Nami, Eternl, or Flint.');
       }
 
-      const walletNames = Object.keys(window.cardano);
-      if (walletNames.length === 0) throw new Error('No wallet extension detected.');
-      
-      const walletName = walletNames[0];
       const wallet = window.cardano[walletName];
+      if (!wallet) {
+        throw new Error(`Wallet "${walletName}" not found. Please install it first.`);
+      }
 
-      // 2. IMPORTANT: Request a FRESH api connection.
-      // Even if we have a cached one, we call enable() again.
-      // This re-establishes the bridge if the worker went to sleep.
+      // Request a fresh API connection
       const api = await wallet.enable();
 
-      // 3. Get addresses (with a safety check for the API dying mid-call)
       let usedAddresses;
       try {
         usedAddresses = await api.getUsedAddresses();
       } catch (innerError: any) {
-        // If this fails with "shutdown", we just bubble up a clear error
         if (innerError.message?.includes('shutdown') || innerError.message?.includes('RemoteApiShutdownError')) {
-          throw new Error('Wallet connection expired. Please click "Connect" again to refresh.');
+          throw new Error('Wallet connection expired. Please try again.');
         }
         throw innerError;
       }
@@ -93,62 +85,59 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
       const firstAddress = usedAddresses[0];
 
-      // 4. Get balance
       const rawBalance = await api.getBalance();
       const formattedBalance = parseBalance(rawBalance);
 
-      // 5. Update State
       setAddress(firstAddress);
       setBalance(`${formattedBalance} ₳`);
       setIsConnected(true);
+      
+      // Save both address AND the selected wallet name
       localStorage.setItem('walletAddress', firstAddress);
-      window.__walletApi = api; // Store it, but remember it might die later
+      localStorage.setItem('selectedWallet', walletName);
+      window.__walletApi = api;
 
     } catch (err: any) {
       console.error('Wallet connection error:', err);
-      
-      // Special friendly message for the shutdown error
       let errorMessage = err.message || 'Failed to connect wallet.';
       if (errorMessage.includes('shutdown') || errorMessage.includes('RemoteApiShutdownError')) {
-        errorMessage = 'Wallet connection expired. Please click "Connect" again to refresh.';
+        errorMessage = 'Wallet connection expired. Please try again.';
       }
-      
       setError(errorMessage);
       setIsConnected(false);
       setAddress(null);
       setBalance(null);
-      // Clear any stale cached API
       window.__walletApi = undefined;
     } finally {
       setConnecting(false);
     }
   };
 
-  // --- DISCONNECT ---
   const disconnect = () => {
     setIsConnected(false);
     setAddress(null);
     setBalance(null);
     setError(null);
     localStorage.removeItem('walletAddress');
+    localStorage.removeItem('selectedWallet');
     window.__walletApi = undefined;
   };
 
-  // --- AUTO-CONNECT ON MOUNT (with a delay to let the extension wake up) ---
+  // --- AUTO-CONNECT using the previously selected wallet ---
   useEffect(() => {
-    // Only run once
     if (autoConnectAttempted.current) return;
     autoConnectAttempted.current = true;
 
     const savedAddress = localStorage.getItem('walletAddress');
-    if (savedAddress && window.cardano) {
-      // Give the browser/wallet extension 500ms to fully initialize its background worker
+    const savedWallet = localStorage.getItem('selectedWallet');
+    
+    if (savedAddress && savedWallet && window.cardano) {
       const timer = setTimeout(() => {
-        connect().catch(() => {});
+        connect(savedWallet).catch(() => {});
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, []); // Empty dependency array ensures it runs once
+  }, []);
 
   return (
     <WalletContext.Provider
@@ -175,7 +164,6 @@ export function useWallet() {
   return context;
 }
 
-// Extend the Window interface
 declare global {
   interface Window {
     cardano: any;
