@@ -4,6 +4,7 @@
 import { TrendingUp, Users, Zap, ArrowRight } from 'lucide-react';
 import { DashboardShell } from '../components/dashboard-shell';
 import { Button } from '../components/ui/button';
+import Link from 'next/link';
 
 export default function Page() {
   return (
@@ -88,16 +89,21 @@ export default function Page() {
         <div className="glass rounded-lg p-8 border border-border/50">
           <h2 className="text-xl font-bold text-foreground mb-6">Quick Actions</h2>
           <div className="space-y-3">
-            <Button className="w-full justify-between gap-2 bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-background shadow-glow h-12">
-              Browse Marketplace
-              <ArrowRight className="w-4 h-4" />
+            <Button className="w-full justify-between gap-2 cursor-pointer bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-background shadow-glow h-12">
+              <Link href={"/marketplace-content-view"} className='flex items-center justify-between w-full'>
+                Browse Marketplace
+                <ArrowRight className="w-4 h-4" />
+              </Link>
             </Button>
             <Button
               variant="outline"
               className="w-full justify-between gap-2 border-primary/50 text-primary hover:bg-primary/10 h-12"
             >
-              Create New Profile
-              <ArrowRight className="w-4 h-4" />
+
+              <Link href={"/onboarding-portal"} className='flex items-center justify-between w-full'>
+                Create New Profile
+                <ArrowRight className="w-4 h-4" />
+              </ Link>
             </Button>
             <Button
               variant="outline"

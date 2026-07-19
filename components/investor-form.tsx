@@ -2,11 +2,11 @@
 
 import { useState } from 'react'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Button } from '@/components/ui/buttonn'
-import { Input } from '@/components/ui/inputt'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
+import { Button } from './ui/buttonn'
+import { Input } from './ui/inputt'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 
 const REGIONS = [
   'North America',

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ChevronDown, Handshake, CheckCircle2, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from './ui/button';
 
 type HandshakeState = 'default' | 'pending' | 'completed';
 

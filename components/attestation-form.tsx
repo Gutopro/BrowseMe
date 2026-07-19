@@ -1,24 +1,24 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/buttonaf'
-import { Input } from '@/components/ui/inputaf'
-import { Label } from '@/components/ui/labelaf'
+import { Button } from './ui/buttonaf'
+import { Input } from './ui/inputaf'
+import { Label } from './ui/labelaf'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/selectaf'
+} from './ui/selectaf'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltipaf'
+} from './ui/tooltipaf'
 import { HelpCircle } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn } from '../lib/utils'
 
 interface AttestationFormData {
   fullName: string

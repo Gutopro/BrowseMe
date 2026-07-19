@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import InvestorForm from '@/components/investor-form'
+import InvestorForm from './investor-form'
 import BusinessVerificationForm from './business-verification-form'
-import AttestationPlaceholder from '@/components/attestation-placeholder'
+import AttestationPlaceholder from './attestation-placeholder'
+import { Tabs,  TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 
 export default function OnboardingPortal() {
   const [activeTab, setActiveTab] = useState('investor')

@@ -1,6 +1,7 @@
 'use client';
 
-import { Web3BusinessCard } from '@/components/web3-business-card';
+import { Web3BusinessCard } from "../../components/web3-business-card";
+
 
 export default function Page() {
   const mockBusinesses = [

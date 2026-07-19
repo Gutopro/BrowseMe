@@ -1,14 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from '@/components/ui/buttonbv';
-import { Input } from '@/components/ui/inputbv';
-import { Label } from '@/components/ui/labelbv';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cardbv';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabsbv';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/selectbv';
-import { Badge } from '@/components/ui/badgebv';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/selectbv';
+import { Badge } from './ui/badgebv';
 import { Check, ChevronRight } from 'lucide-react';
+import { Label } from './ui/labelbv';
+import { Input } from './ui/inputbv';
+import { Button } from './ui/buttonbv';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/cardbv';
 
 interface FormData {
   businessName: string;
