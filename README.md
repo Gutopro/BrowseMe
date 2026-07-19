@@ -97,6 +97,7 @@ created at `instance/browseme.db` and is intentionally excluded from Git.
 | `SECRET_KEY` | Flask session/signing secret | `dev-only-change-me` |
 | `DATABASE_URL` | SQLAlchemy database connection URL | `sqlite:///browseme.db` |
 | `FLASK_DEBUG` | Enables Flask debug mode when `true` | `false` |
+| `CORS_ORIGINS` | Comma-separated allowed frontend origins | `http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:5173`, `http://127.0.0.1:5173` |
 
 ### Frontend integration
 
