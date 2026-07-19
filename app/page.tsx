@@ -1,6 +1,5 @@
 'use client';
 
-// import { DashboardShell } from '@/components/dashboard-shell';
 import { TrendingUp, Users, Zap, ArrowRight } from 'lucide-react';
 import { DashboardShell } from '../components/dashboard-shell';
 import { Button } from '../components/ui/button';
@@ -8,11 +7,11 @@ import Link from 'next/link';
 
 export default function Page() {
   return (
-    <DashboardShell>
+    <>
       {/* Hero Section */}
       <div className="mb-12">
         <h1 className="text-4xl lg:text-5xl font-bold text-balance mb-4">
-          Welcome to <span className="gradient-primary bg-clip-text text-transparent">BrowseMe</span>
+          Welcome to <span className="linear-primary bg-clip-text text-transparent">BrowseMe</span>
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mb-8">
           Discover opportunities, connect with innovators, and grow your fintech presence in our exclusive marketplace.
@@ -72,7 +71,7 @@ export default function Page() {
                 key={item}
                 className="flex items-start gap-4 pb-4 border-b border-border/30 last:border-0"
               >
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center flex-shrink-0">
+                <div className="w-10 h-10 rounded-lg bg-linear-to-br from-primary/20 to-accent/20 flex items-center justify-center shrink-0">
                   <Zap className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -89,7 +88,7 @@ export default function Page() {
         <div className="glass rounded-lg p-8 border border-border/50">
           <h2 className="text-xl font-bold text-foreground mb-6">Quick Actions</h2>
           <div className="space-y-3">
-            <Button className="w-full justify-between gap-2 cursor-pointer bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-background shadow-glow h-12">
+            <Button className="w-full justify-between gap-2 cursor-pointer bg-linear-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-background shadow-glow h-12">
               <Link href={"/marketplace-content-view"} className='flex items-center justify-between w-full'>
                 Browse Marketplace
                 <ArrowRight className="w-4 h-4" />
@@ -130,7 +129,7 @@ export default function Page() {
                   <h3 className="font-bold text-foreground mb-1">{opportunity}</h3>
                   <p className="text-sm text-muted-foreground">Premium Listing</p>
                 </div>
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center group-hover:from-primary/30 group-hover:to-accent/30 transition-colors">
+                <div className="w-10 h-10 rounded-lg bg-linear-to-br from-primary/20 to-accent/20 flex items-center justify-center group-hover:from-primary/30 group-hover:to-accent/30 transition-colors">
                   <Zap className="w-5 h-5 text-primary" />
                 </div>
               </div>
@@ -147,6 +146,6 @@ export default function Page() {
           ))}
         </div>
       </div>
-    </DashboardShell>
+    </>
   );
 }
