@@ -64,6 +64,51 @@ Runs the contract's test suite (`contracts/src/test/browseme.test.ts`) against t
 
 *(Add frontend/CLI demo instructions here once available.)*
 
+## Backend API
+
+The Flask backend provides a local read model and API layer for the BrowseMe
+demo. It stores only public listing fields and cryptographic commitments; do
+not submit raw tax IDs, addresses, revenue, or private handshake payloads.
+
+### Backend prerequisites
+
+- Python 3.10 or later
+
+### Run locally
+
+From the repository root:
+
+```bash
+python3 -m venv .venv
+# Windows PowerShell: .\.venv\Scripts\Activate.ps1
+# macOS/Linux/Git Bash: source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+python3 init_db.py
+python3 app.py
+```
+
+The server runs at `http://127.0.0.1:5000`. The seeded SQLite database is
+created at `instance/browseme.db` and is intentionally excluded from Git.
+
+### Configuration
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SECRET_KEY` | Flask session/signing secret | `dev-only-change-me` |
+| `DATABASE_URL` | SQLAlchemy database connection URL | `sqlite:///browseme.db` |
+| `FLASK_DEBUG` | Enables Flask debug mode when `true` | `false` |
+| `CORS_ORIGINS` | Comma-separated allowed frontend origins | `http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:5173`, `http://127.0.0.1:5173` |
+
+### Frontend integration
+
+The complete API contract, including request bodies, response codes, and
+schemas, is in [`api.yaml`](./api.yaml). Import it into Postman or open it in
+Swagger Editor for interactive documentation.
+
+The current API is for demo use. Before production, add wallet/signature-based
+authentication and authorization for business actions, especially accepting or
+withdrawing handshakes.
+
 ## Prerequisites
 
 - Node.js v22.17.1 or higher
