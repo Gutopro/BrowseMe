@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from hashlib import sha256
 
-from app import app, db
+from app import app
+from extensions import db
 from models import (
     AttesterRecord,
     AttesterType,
@@ -137,7 +138,7 @@ def seed_database() -> None:
                 nonce=accepted_nonce,
                 investor_id=zainab.id,
                 business_id=green_harvest.id,
-                investor_data_staged=True,
+                investor_data_staged=False,
                 shaken=True,
             )
         )

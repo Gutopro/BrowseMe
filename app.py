@@ -3,10 +3,7 @@
 import os
 
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-
-
-db = SQLAlchemy()
+from extensions import db
 
 
 def create_app() -> Flask:
@@ -19,6 +16,10 @@ def create_app() -> Flask:
     )
 
     db.init_app(app)
+
+    from routes import register_resources
+
+    register_resources(app)
 
     return app
 

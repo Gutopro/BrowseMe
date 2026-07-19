@@ -10,7 +10,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime, timezone
 
-from app import db
+from extensions import db
 
 
 class BusinessTrack(enum.Enum):

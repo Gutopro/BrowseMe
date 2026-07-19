@@ -1,0 +1,380 @@
+openapi: 3.0.3
+info:
+  title: BrowseMe API
+  version: 0.1.0
+  description: |
+    Demo API for BrowseMe's public business discovery, commitment-only investor
+    registration, attestations, and consent-gated handshakes. Never submit raw
+    tax IDs, names, addresses, revenue, or private handshake payloads.
+servers:
+  - url: http://127.0.0.1:5000
+    description: Local development server
+paths:
+  /investors:
+    post:
+      tags: [Investors]
+      summary: Register an investor commitment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvestorRegistration'
+      responses:
+        '201':
+          description: Investor created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Investor'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /businesses:
+    get:
+      tags: [Businesses]
+      summary: Browse public business listings
+      parameters:
+        - $ref: '#/components/parameters/Tier'
+        - $ref: '#/components/parameters/Sector'
+        - $ref: '#/components/parameters/Location'
+        - $ref: '#/components/parameters/BusinessStatus'
+      responses:
+        '200':
+          description: Listed businesses only
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [businesses]
+                properties:
+                  businesses:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Business'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    post:
+      tags: [Businesses]
+      summary: Register a Track A or Track B business
+      description: Track A is listed immediately at tier 2. Track B starts unlisted at tier 0.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessRegistration'
+      responses:
+        '201':
+          description: Business created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /businesses/{business_id}:
+    get:
+      tags: [Businesses]
+      summary: Get one public business listing
+      parameters:
+        - $ref: '#/components/parameters/BusinessId'
+      responses:
+        '200':
+          description: Listed business
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /businesses/{business_id}/attestations:
+    post:
+      tags: [Businesses]
+      summary: Submit a Track B attestation
+      description: |
+        Duplicate attester hashes are rejected. A Track B business becomes listed
+        after at least two attestations including at least one union attestation.
+      parameters:
+        - $ref: '#/components/parameters/BusinessId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Attestation'
+      responses:
+        '201':
+          description: Attestation recorded and business tier recomputed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [attestation_count, has_union_attestation, business]
+                properties:
+                  attestation_count:
+                    type: integer
+                    minimum: 1
+                    maximum: 4
+                  has_union_attestation:
+                    type: boolean
+                  business:
+                    $ref: '#/components/schemas/Business'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /handshakes:
+    post:
+      tags: [Handshakes]
+      summary: Initiate a nonce-based handshake
+      description: Stages only a reference to investor data; no private payload is accepted by this API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HandshakeInitiation'
+      responses:
+        '201':
+          description: Handshake staged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Handshake'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /handshakes/{nonce}/shake:
+    post:
+      tags: [Handshakes]
+      summary: Accept a pending handshake
+      description: Demo endpoint. Production requires wallet/signature authorization of the business owner.
+      parameters:
+        - $ref: '#/components/parameters/Nonce'
+      responses:
+        '200':
+          description: Handshake accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Handshake'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /handshakes/{nonce}/unshake:
+    post:
+      tags: [Handshakes]
+      summary: Withdraw a handshake unilaterally
+      description: Demo endpoint. The actor must identify as the investor or business participant.
+      parameters:
+        - $ref: '#/components/parameters/Nonce'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HandshakeWithdrawal'
+      responses:
+        '200':
+          description: Handshake withdrawn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Handshake'
+        '403':
+          description: Caller is not a handshake participant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+components:
+  parameters:
+    BusinessId:
+      name: business_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    Nonce:
+      name: nonce
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Commitment'
+    Tier:
+      name: tier
+      in: query
+      schema:
+        type: integer
+        enum: [1, 2, 3]
+    Sector:
+      name: sector
+      in: query
+      schema:
+        type: string
+      example: Agriculture
+    Location:
+      name: location
+      in: query
+      schema:
+        type: string
+      example: Lagos
+    BusinessStatus:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [open, investing]
+  responses:
+    BadRequest:
+      description: Invalid or incomplete request data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Request conflicts with existing state
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Commitment:
+      type: string
+      description: SHA-256 commitment encoded as a 64-character hexadecimal string.
+      pattern: '^[a-fA-F0-9]{64}$'
+      example: 6c0a8c603ab68909b06ca9ad1394535ddb84d9d9fe4b3fc5a5e6c6d4e2e48ac1
+    InvestorRegistration:
+      type: object
+      required: [investor_id, commitment]
+      properties:
+        investor_id:
+          type: string
+          example: demo-investor-kemi
+        commitment:
+          $ref: '#/components/schemas/Commitment'
+    Investor:
+      allOf:
+        - $ref: '#/components/schemas/InvestorRegistration'
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: integer
+              example: 1
+    BusinessRegistration:
+      type: object
+      required: [track, sector, location, commitment]
+      properties:
+        track:
+          type: string
+          enum: [A, B]
+          description: A is formal CAC registration; B is community-attested.
+        sector:
+          type: string
+          maxLength: 100
+          example: Agriculture
+        location:
+          type: string
+          maxLength: 100
+          example: Kwara
+        commitment:
+          $ref: '#/components/schemas/Commitment'
+    Business:
+      type: object
+      required: [id, track, tier, status, sector, location, listed]
+      properties:
+        id:
+          type: integer
+          example: 1
+        track:
+          type: string
+          enum: [A, B]
+        tier:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: 0 is pending/unlisted; 1 is highest confidence; 3 is newly listed.
+        status:
+          type: string
+          enum: [open, investing]
+        sector:
+          type: string
+        location:
+          type: string
+        listed:
+          type: boolean
+    Attestation:
+      type: object
+      required: [attester_hash, attester_type]
+      properties:
+        attester_hash:
+          $ref: '#/components/schemas/Commitment'
+        attester_type:
+          type: string
+          enum: [community, religious, union, education]
+    HandshakeInitiation:
+      type: object
+      required: [investor_id, business_id, nonce]
+      properties:
+        investor_id:
+          type: string
+          example: demo-investor-kemi
+        business_id:
+          type: integer
+          minimum: 1
+        nonce:
+          $ref: '#/components/schemas/Commitment'
+    HandshakeWithdrawal:
+      type: object
+      required: [actor_type, actor_id]
+      properties:
+        actor_type:
+          type: string
+          enum: [investor, business]
+        actor_id:
+          type: string
+          description: Investor ID for investors; the numeric business ID encoded as a string for businesses.
+    Handshake:
+      type: object
+      required: [nonce, investor_id, business_id, investor_data_staged, shaken, unshaken]
+      properties:
+        nonce:
+          $ref: '#/components/schemas/Commitment'
+        investor_id:
+          type: string
+        business_id:
+          type: integer
+        investor_data_staged:
+          type: boolean
+        shaken:
+          type: boolean
+        unshaken:
+          type: boolean
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
