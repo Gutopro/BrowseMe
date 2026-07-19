@@ -85,14 +85,12 @@ export function Sidebar() {
                 className={cn(
                   'group relative flex items-center gap-3 px-4 py-3 rounded-lg',
                   'text-sm font-medium cursor-pointer',
-                  'transition-all duration-200 ease-out', // Smooth transitions
-                  // Fixed: Removed opacity-0/animate-in to ensure they are ALWAYS visible
+                  'transition-all duration-200 ease-out', 
                   isActive
                     ? 'bg-primary/10 text-primary border border-primary/20 shadow-[inset_0_0_20px_rgba(99,102,241,0.05)]'
                     : 'text-muted-foreground hover:text-foreground hover:bg-card/50 hover:border-border/50 border border-transparent'
                 )}
               >
-                {/* Left Glow Bar for Active state */}
                 {isActive && (
                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full bg-primary shadow-glow-sm" />
                 )}
