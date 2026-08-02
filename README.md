@@ -88,7 +88,9 @@ python3 app.py
 ```
 
 The server runs at `http://127.0.0.1:5000`. The seeded SQLite database is
-created at `instance/browseme.db` and is intentionally excluded from Git.
+created at `instance/browseme.db` and is intentionally excluded from Git. The database structure is as follows-
+
+![DB-Diagram](BrowseMe.png)
 
 ### Configuration
 
