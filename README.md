@@ -155,7 +155,7 @@ Another container or process is already bound to 6300. Check with `docker ps --f
 ## Contract Compilation
 
 ```bash
-yarn compact
+yarn compile
 ```
 
-Compiles all `.compact` source files into the `managed/` directory via the system-installed `compactc`.
+Compiles `contracts/main.compact` into `contracts/managed/browseme` via the system-installed `compactc`. Use `yarn compile:fast` during iteration to skip zero-knowledge key generation (`--skip-zk`) for a faster feedback loop — re-run the full `yarn compile` before testing or deploying.
