@@ -43,7 +43,7 @@ const RAW_RUNTIME_STATE =
           ["@midnight-ntwrk/wallet-sdk-hd", "npm:3.0.2"],\
           ["@midnight-ntwrk/wallet-sdk-shielded", "npm:3.0.1"],\
           ["@midnight-ntwrk/wallet-sdk-unshielded-wallet", "npm:3.1.0"],\
-          ["@types/node", "npm:26.2.0"],\
+          ["@types/node", "npm:22.20.1"],\
           ["@types/ws", "npm:8.18.1"],\
           ["BrowseMe", "workspace:."],\
           ["tsx", "npm:4.23.12"],\
@@ -2112,6 +2112,14 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["@types/node", [\
+      ["npm:22.20.1", {\
+        "packageLocation": "../.yarn/berry/cache/@types-node-npm-22.20.1-05a3fb0a12-10c0.zip/node_modules/@types/node/",\
+        "packageDependencies": [\
+          ["@types/node", "npm:22.20.1"],\
+          ["undici-types", "npm:6.21.0"]\
+        ],\
+        "linkType": "HARD"\
+      }],\
       ["npm:26.2.0", {\
         "packageLocation": "../.yarn/berry/cache/@types-node-npm-26.2.0-17d7639436-10c0.zip/node_modules/@types/node/",\
         "packageDependencies": [\
@@ -2298,7 +2306,7 @@ const RAW_RUNTIME_STATE =
           ["@midnight-ntwrk/wallet-sdk-hd", "npm:3.0.2"],\
           ["@midnight-ntwrk/wallet-sdk-shielded", "npm:3.0.1"],\
           ["@midnight-ntwrk/wallet-sdk-unshielded-wallet", "npm:3.1.0"],\
-          ["@types/node", "npm:26.2.0"],\
+          ["@types/node", "npm:22.20.1"],\
           ["@types/ws", "npm:8.18.1"],\
           ["BrowseMe", "workspace:."],\
           ["tsx", "npm:4.23.12"],\
@@ -3623,6 +3631,13 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["undici-types", [\
+      ["npm:6.21.0", {\
+        "packageLocation": "../.yarn/berry/cache/undici-types-npm-6.21.0-eb2b0ed56a-10c0.zip/node_modules/undici-types/",\
+        "packageDependencies": [\
+          ["undici-types", "npm:6.21.0"]\
+        ],\
+        "linkType": "HARD"\
+      }],\
       ["npm:8.3.0", {\
         "packageLocation": "../.yarn/berry/cache/undici-types-npm-8.3.0-d34470de3e-10c0.zip/node_modules/undici-types/",\
         "packageDependencies": [\
@@ -3645,7 +3660,7 @@ const RAW_RUNTIME_STATE =
           ["@types/jiti", null],\
           ["@types/less", null],\
           ["@types/lightningcss", null],\
-          ["@types/node", "npm:26.2.0"],\
+          ["@types/node", "npm:22.20.1"],\
           ["@types/sass", null],\
           ["@types/sass-embedded", null],\
           ["@types/stylus", null],\
@@ -3787,7 +3802,7 @@ const RAW_RUNTIME_STATE =
           ["@types/edge-runtime__vm", null],\
           ["@types/happy-dom", null],\
           ["@types/jsdom", null],\
-          ["@types/node", "npm:26.2.0"],\
+          ["@types/node", "npm:22.20.1"],\
           ["@types/vitest__browser", null],\
           ["@types/vitest__ui", null],\
           ["@vitest/browser", null],\

@@ -58,7 +58,7 @@ npm start
 
 `npm start` pulls the pinned Docker images, starts all three services with health checks, initializes a pre-funded genesis wallet, and opens a funding menu. Leave it running in its own terminal.
 
-If you only need the containers (no funding menu, e.g. because `deploy.ts` handles its own wallet):
+`deploy.ts` funds its own dev wallet automatically, so the interactive funding menu isn't needed for this project — the standalone container-only mode below is enough:
 
 ```bash
 docker compose -f standalone.yml up -d    # start
@@ -74,7 +74,7 @@ Endpoints used by `deploy.ts`: node `ws://127.0.0.1:9944`, indexer `http://127.0
 yarn deploy
 ```
 
-Runs `contracts/src/deploy.ts`, which derives a dev wallet from a fixed local seed, waits for wallet sync, and deploys the compiled contract. On success it prints:
+Runs `contracts/src/deploy.ts`, which derives a dev wallet from a fixed local seed, waits for wallet sync, and deploys the compiled contract. The dev wallet is pre-funded automatically — no manual funding step needed. On success it prints:
 
 ```
 [OK] Contract deployed at: <contract-address>
