@@ -38,6 +38,7 @@ const RAW_RUNTIME_STATE =
           ["@midnight-ntwrk/midnight-js-network-id", "npm:4.1.1"],\
           ["@midnight-ntwrk/midnight-js-node-zk-config-provider", "npm:4.1.1"],\
           ["@midnight-ntwrk/midnight-js-types", "npm:4.1.1"],\
+          ["@midnight-ntwrk/wallet-sdk-abstractions", "npm:2.1.0"],\
           ["@midnight-ntwrk/wallet-sdk-dust-wallet", "npm:4.1.0"],\
           ["@midnight-ntwrk/wallet-sdk-facade", "npm:4.0.1"],\
           ["@midnight-ntwrk/wallet-sdk-hd", "npm:3.0.2"],\
@@ -2301,6 +2302,7 @@ const RAW_RUNTIME_STATE =
           ["@midnight-ntwrk/midnight-js-network-id", "npm:4.1.1"],\
           ["@midnight-ntwrk/midnight-js-node-zk-config-provider", "npm:4.1.1"],\
           ["@midnight-ntwrk/midnight-js-types", "npm:4.1.1"],\
+          ["@midnight-ntwrk/wallet-sdk-abstractions", "npm:2.1.0"],\
           ["@midnight-ntwrk/wallet-sdk-dust-wallet", "npm:4.1.0"],\
           ["@midnight-ntwrk/wallet-sdk-facade", "npm:4.0.1"],\
           ["@midnight-ntwrk/wallet-sdk-hd", "npm:3.0.2"],\

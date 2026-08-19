@@ -12,7 +12,11 @@ import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-pri
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
-import { WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
+import {
+  WalletFacade,
+  WalletEntrySchema,
+  mergeWalletEntries,
+} from '@midnight-ntwrk/wallet-sdk-facade';
 import { ShieldedWallet } from '@midnight-ntwrk/wallet-sdk-shielded';
 import { DustWallet } from '@midnight-ntwrk/wallet-sdk-dust-wallet';
 import {
@@ -24,6 +28,7 @@ import { HDWallet, Roles } from '@midnight-ntwrk/wallet-sdk-hd';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import type { MidnightProvider, MidnightProviders, WalletProvider } from '@midnight-ntwrk/midnight-js-types';
 import * as CompactJs from '@midnight-ntwrk/compact-js';
+import { InMemoryTransactionHistoryStorage } from '@midnight-ntwrk/wallet-sdk-abstractions';
 
 // ── Compiled BrowseMe contract + witnesses ───────────────────────────────────
 // This script lives at contracts/src/deploy.ts, alongside witnesses.ts, so
@@ -164,6 +169,13 @@ export async function main(): Promise<string> {
         indexerHttpUrl: new URL(LOCAL_NETWORK.indexerHttp),
         indexerWsUrl: new URL(LOCAL_NETWORK.indexerWs),
       },
+      // Without this, WalletFacade.init threads `undefined` into the
+      // shielded/unshielded/dust services' internal history writers, which
+      // crashes with "Cannot read properties of undefined (reading 'upsert')"
+      // every time a tx is recorded. In-memory is fine for a one-shot deploy
+      // script; swap for a persisted TransactionHistoryStorage if the
+      // wallet-daemon needs history to survive restarts.
+      txHistoryStorage: new InMemoryTransactionHistoryStorage(WalletEntrySchema, mergeWalletEntries),
     },
     shielded: (cfg) => ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys),
     unshielded: (cfg) => UnshieldedWallet(cfg).startWithPublicKey(PublicKey.fromKeyStore(unshieldedKeystore)),
@@ -234,15 +246,11 @@ export async function main(): Promise<string> {
   // ledger state (businessOwners, investors, handshake parties, etc).
   // witnesses.ts wants a 32-byte Uint8Array in BrowseMePrivateState.
   //
-  // NOTE: this uses the NightExternal-role key material derived above as
-  // a stand-in 32-byte address. Confirm this matches whatever address
-  // encoding the rest of the DApp (frontend witness provider) actually
-  // uses for `callerAddress` before deploying anywhere beyond local dev —
-  // if the frontend derives it differently (e.g. from the bech32 address
-  // or coin public key), circuits comparing caller identity across calls
-  // (businessOwners.lookup(...) == caller, handshake party checks, etc.)
-  // will silently fail to match.
-  const callerAddressBytes = keys[Roles.NightExternal];
+  // Was: fromHex(unshieldedKeystore.getAddress()) — needs an undeclared package
+  const callerAddressBytes = new Uint8Array(Buffer.from(unshieldedKeystore.getAddress(), 'hex'));
+
+  console.log('[VERIFY] hex address:  ', unshieldedKeystore.getAddress());
+  console.log('[VERIFY] bech32 address:', unshieldedKeystore.getBech32Address().asString());
 
   console.log('[INFO] Creating BrowseMe contract instance...');
   // CompiledContract.make(tag, ctor) wants the raw contract *constructor*
