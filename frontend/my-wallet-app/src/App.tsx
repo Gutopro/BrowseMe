@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import WalletCard from './WalletCard';
+import Homepage from './Homepage';
 import '@midnight-ntwrk/dapp-connector-api';
 import { selectWallet } from './selectWallet';
 
@@ -14,26 +15,20 @@ const App: React.FC = () => {
 
     try {
       const wallet = selectWallet();
-
-      // Connect to the specified network (use 'undeployed' for local development)
       const connectedApi = await wallet.connect('undeployed');
-
-      // Retrieve the unshielded address from the wallet
       const { unshieldedAddress } = await connectedApi.getUnshieldedAddress();
       address = unshieldedAddress;
 
-      // Optional: Get the service URI configuration
       const serviceUriConfig = await connectedApi.getConfiguration();
       console.log('Service URI Config:', serviceUriConfig);
 
-      // Check if the connection is established
       const connectionStatus = await connectedApi.getConnectionStatus();
       if (connectionStatus.status === 'connected') {
         isConnected = true;
-        console.log("Connected to the wallet:", address);
+        console.log('Connected to the wallet:', address);
       }
     } catch (error) {
-      console.log("An error occurred:", error);
+      console.log('An error occurred:', error);
     }
 
     setIsConnected(isConnected);
@@ -45,12 +40,18 @@ const App: React.FC = () => {
     setIsConnected(false);
   };
 
+  if (!isConnected) {
+    return <Homepage onConnectWallet={handleConnect} />;
+  }
+
   return (
-    <div>
-      <header>
-        <h1>Midnight Wallet Connector</h1>
+    <div className="bm-home" style={{ minHeight: '100vh' }}>
+      <header className="bm-section" style={{ textAlign: 'center', paddingBottom: 0 }}>
+        <h1 className="bm-h1" style={{ fontSize: 'clamp(2rem, 4vw, 2.8rem)' }}>
+          Midnight Wallet Connector
+        </h1>
       </header>
-      <main>
+      <main className="bm-section">
         <WalletCard
           isConnected={isConnected}
           walletAddress={walletAddress}

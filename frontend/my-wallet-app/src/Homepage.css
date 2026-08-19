@@ -1,0 +1,421 @@
+/* ============================================================
+   BrowseMe Homepage — design tokens
+   Palette pulled from market/café reference mood: tungsten light,
+   indigo plaid, dried-corn gold, terracotta roofs, adire patterns.
+   ============================================================ */
+
+.bm-home {
+  --ink: #14181c;
+  --ink-soft: #1d232a;
+  --indigo: #2b3a67;
+  --indigo-bright: #3f5490;
+  --gold: #d9a441;
+  --gold-soft: #f0c878;
+  --terracotta: #b4553b;
+  --cream: #f3ede0;
+  --cream-dim: #cfc7b4;
+  --forest: #3c5b44;
+
+  --font-display: "Fraunces", "Iowan Old Style", ui-serif, Georgia, serif;
+  --font-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+
+  background: var(--ink);
+  color: var(--cream);
+  font-family: var(--font-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bm-home * {
+  box-sizing: border-box;
+}
+
+.bm-home a {
+  color: inherit;
+}
+
+/* ---- Layout shell ---- */
+.bm-section {
+  padding: 5rem 1.5rem;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+@media (min-width: 768px) {
+  .bm-section {
+    padding: 7rem 2.5rem;
+  }
+}
+
+/* ---- Hero ---- */
+.bm-hero {
+  position: relative;
+  min-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6rem 1.5rem 4rem;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(217, 164, 65, 0.16), transparent 60%),
+    linear-gradient(165deg, var(--ink) 0%, var(--indigo) 78%, var(--indigo-bright) 130%);
+}
+
+/* Adire-inspired geometric weave, drawn in CSS, not photographic */
+.bm-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.14;
+  background-image:
+    repeating-linear-gradient(45deg, var(--gold) 0 2px, transparent 2px 34px),
+    repeating-linear-gradient(-45deg, var(--cream) 0 1px, transparent 1px 34px);
+  mask-image: radial-gradient(ellipse 80% 60% at 70% 30%, black 10%, transparent 75%);
+}
+
+.bm-hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 1120px;
+  width: 100%;
+  margin: 0 auto;
+  display: grid;
+  gap: 3rem;
+  align-items: center;
+}
+
+@media (min-width: 960px) {
+  .bm-hero-inner {
+    grid-template-columns: 1.15fr 0.85fr;
+  }
+}
+
+.bm-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.75rem;
+}
+
+.bm-eyebrow::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 4px rgba(217, 164, 65, 0.18);
+}
+
+.bm-h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(2.6rem, 6vw, 4.6rem);
+  line-height: 1.03;
+  letter-spacing: -0.01em;
+  margin: 0 0 1.5rem;
+  color: var(--cream);
+}
+
+.bm-h1 em {
+  font-style: italic;
+  color: var(--gold-soft);
+}
+
+.bm-lede {
+  font-size: 1.15rem;
+  line-height: 1.6;
+  color: var(--cream-dim);
+  max-width: 42ch;
+  margin: 0 0 2.5rem;
+}
+
+.bm-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+.bm-btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.9rem 1.75rem;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.bm-btn:focus-visible {
+  outline: 2px solid var(--gold-soft);
+  outline-offset: 3px;
+}
+
+.bm-btn-primary {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+.bm-btn-primary:hover {
+  background: var(--gold-soft);
+  transform: translateY(-1px);
+}
+
+.bm-btn-ghost {
+  background: transparent;
+  border-color: rgba(243, 237, 224, 0.35);
+  color: var(--cream);
+}
+
+.bm-btn-ghost:hover {
+  border-color: var(--cream);
+  transform: translateY(-1px);
+}
+
+/* ---- Hero illustration: original flat-shape market scene ---- */
+.bm-hero-art {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.bm-hero-art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ---- Ledger marquee (signature element) ---- */
+.bm-marquee {
+  border-top: 1px solid rgba(243, 237, 224, 0.14);
+  border-bottom: 1px solid rgba(243, 237, 224, 0.14);
+  background: var(--ink-soft);
+  overflow: hidden;
+  padding: 1rem 0;
+}
+
+.bm-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: bm-scroll 32s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bm-marquee-track {
+    animation: none;
+  }
+}
+
+.bm-marquee-item {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+  padding: 0 2.5rem;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 2.5rem;
+}
+
+.bm-marquee-item span.bm-dot {
+  color: var(--gold);
+}
+
+@keyframes bm-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- Process ---- */
+.bm-process-head {
+  max-width: 640px;
+  margin-bottom: 3.5rem;
+}
+
+.bm-eyebrow-dark {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.bm-h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(1.9rem, 3.6vw, 2.6rem);
+  line-height: 1.15;
+  margin: 0;
+  color: var(--cream);
+}
+
+.bm-process-grid {
+  display: grid;
+  gap: 1px;
+  background: rgba(243, 237, 224, 0.12);
+  border: 1px solid rgba(243, 237, 224, 0.12);
+}
+
+@media (min-width: 768px) {
+  .bm-process-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.bm-process-step {
+  background: var(--ink);
+  padding: 2.25rem 2rem;
+}
+
+.bm-process-num {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--gold);
+  margin-bottom: 1.25rem;
+  display: block;
+}
+
+.bm-process-title {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin: 0 0 0.65rem;
+  color: var(--cream);
+}
+
+.bm-process-body {
+  font-size: 0.92rem;
+  color: var(--cream-dim);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.bm-process-circuit {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--gold-soft);
+  margin-top: 1rem;
+  display: block;
+}
+
+/* ---- Dual audience split ---- */
+.bm-split {
+  padding: 0;
+  max-width: none;
+  display: grid;
+}
+
+@media (min-width: 860px) {
+  .bm-split {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.bm-split-panel {
+  padding: 5rem 2rem;
+}
+
+@media (min-width: 768px) {
+  .bm-split-panel {
+    padding: 6rem 3rem;
+  }
+}
+
+.bm-split-panel--business {
+  background: var(--forest);
+}
+
+.bm-split-panel--investor {
+  background: var(--indigo);
+}
+
+.bm-split-track {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold-soft);
+  margin-bottom: 1.25rem;
+  display: block;
+}
+
+.bm-split-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  font-weight: 600;
+  margin: 0 0 1rem;
+  color: var(--cream);
+}
+
+.bm-split-body {
+  color: var(--cream-dim);
+  font-size: 0.98rem;
+  line-height: 1.6;
+  max-width: 34ch;
+  margin: 0 0 1.75rem;
+}
+
+.bm-split-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.bm-split-list li {
+  font-size: 0.88rem;
+  color: var(--cream-dim);
+  display: flex;
+  gap: 0.6rem;
+}
+
+.bm-split-list li::before {
+  content: "—";
+  color: var(--gold);
+}
+
+/* ---- Footer CTA ---- */
+.bm-footer-cta {
+  text-align: center;
+  border-top: 1px solid rgba(243, 237, 224, 0.12);
+}
+
+.bm-footer-cta .bm-h2 {
+  margin-bottom: 1rem;
+}
+
+.bm-footer-cta .bm-lede {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.bm-footer-cta .bm-cta-row {
+  justify-content: center;
+}
+
+.bm-foot-note {
+  margin-top: 3rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--cream-dim);
+  opacity: 0.6;
+  letter-spacing: 0.04em;
+}

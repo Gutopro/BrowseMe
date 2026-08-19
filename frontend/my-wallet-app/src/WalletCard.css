@@ -1,0 +1,188 @@
+/* ============================================================
+   WalletCard — shares the Homepage token system
+   (ink / indigo / gold / cream). If Homepage.css is already
+   loaded on the page, the --bm-* custom properties defined
+   there will already exist; the fallbacks below let this file
+   also stand alone if WalletCard renders outside .bm-home.
+   ============================================================ */
+
+.wc-card {
+  --wc-ink: var(--ink, #14181c);
+  --wc-ink-soft: var(--ink-soft, #1d232a);
+  --wc-indigo: var(--indigo, #2b3a67);
+  --wc-gold: var(--gold, #d9a441);
+  --wc-gold-soft: var(--gold-soft, #f0c878);
+  --wc-cream: var(--cream, #f3ede0);
+  --wc-cream-dim: var(--cream-dim, #cfc7b4);
+
+  font-family: var(--font-body, "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif);
+  background: var(--wc-ink-soft);
+  border: 1px solid rgba(243, 237, 224, 0.12);
+  border-radius: 6px;
+  padding: 1.75rem;
+  max-width: 420px;
+  margin: 3rem auto;
+  box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.6);
+}
+
+.wc-card * {
+  box-sizing: border-box;
+}
+
+/* ---- Status row ---- */
+.wc-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.wc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wc-dot--live {
+  background: var(--wc-gold);
+  box-shadow: 0 0 0 4px rgba(217, 164, 65, 0.18);
+  animation: wc-pulse 2.4s ease-in-out infinite;
+}
+
+.wc-dot--off {
+  background: var(--wc-cream-dim);
+  opacity: 0.5;
+}
+
+@keyframes wc-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(217, 164, 65, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(217, 164, 65, 0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wc-dot--live {
+    animation: none;
+  }
+}
+
+.wc-status-label {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--wc-cream-dim);
+}
+
+/* ---- Body ---- */
+.wc-body {
+  min-height: 64px;
+  margin-bottom: 1.75rem;
+}
+
+.wc-eyebrow {
+  display: block;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--wc-gold-soft);
+  margin-bottom: 0.6rem;
+}
+
+.wc-address-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--wc-ink);
+  border: 1px solid rgba(243, 237, 224, 0.1);
+  border-radius: 4px;
+  padding: 0.7rem 0.85rem;
+}
+
+.wc-address {
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 0.86rem;
+  color: var(--wc-cream);
+  margin: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.wc-copy-btn {
+  font-family: var(--font-body, "IBM Plex Sans", sans-serif);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--wc-gold-soft);
+  background: transparent;
+  border: 1px solid rgba(217, 164, 65, 0.35);
+  border-radius: 3px;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.wc-copy-btn:hover {
+  border-color: var(--wc-gold-soft);
+  color: var(--wc-cream);
+}
+
+.wc-copy-btn:focus-visible {
+  outline: 2px solid var(--wc-gold-soft);
+  outline-offset: 2px;
+}
+
+.wc-empty {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--wc-cream-dim);
+  margin: 0;
+}
+
+/* ---- Action row ---- */
+.wc-action-row {
+  display: flex;
+}
+
+.wc-btn {
+  width: 100%;
+  font-family: var(--font-body, "IBM Plex Sans", sans-serif);
+  font-weight: 600;
+  font-size: 0.92rem;
+  padding: 0.8rem 1.5rem;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.wc-btn:focus-visible {
+  outline: 2px solid var(--wc-gold-soft);
+  outline-offset: 3px;
+}
+
+.wc-btn-primary {
+  background: var(--wc-gold);
+  color: var(--wc-ink);
+}
+
+.wc-btn-primary:hover {
+  background: var(--wc-gold-soft);
+  transform: translateY(-1px);
+}
+
+.wc-btn-ghost {
+  background: transparent;
+  border-color: rgba(243, 237, 224, 0.3);
+  color: var(--wc-cream);
+}
+
+.wc-btn-ghost:hover {
+  border-color: var(--wc-cream);
+  transform: translateY(-1px);
+}
