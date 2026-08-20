@@ -90,6 +90,62 @@ yarn test
 
 Runs `contracts/src/test/browseme.test.ts` against `BrowseMeSimulator`.
 
+## Frontend
+
+`frontend/my-wallet-app` is a Vite + React + TypeScript app that connects to a Midnight wallet extension and talks to the deployed contract.
+
+### Prerequisites
+
+- Node.js v22.17.1+ (same as the root project)
+- A Midnight-compatible wallet browser extension, connected to the `undeployed` network (see [Run the local network](#run-the-local-network) above)
+
+### Setup
+
+```bash
+cd frontend/my-wallet-app
+npm install
+```
+
+### Run
+
+```bash
+npm run dev
+```
+
+Starts the Vite dev server (default `http://localhost:5173`). The local network (node, indexer, proof server) and a deployed contract must already be running — see [Run the local network](#run-the-local-network) and [Deploy](#deploy) above.
+
+Other scripts:
+
+```bash
+npm run build    # type-check (tsc -b) and production build
+npm run lint      # eslint
+npm run preview   # preview a production build locally
+```
+
+### Structure
+
+```
+src/
+├── App.tsx               # top-level view state, wallet connect/disconnect
+├── Homepage.tsx           # landing page (disconnected state)
+├── WalletCard.tsx          # connected wallet address display/copy/disconnect
+├── RegistrationForm.tsx     # business registration form (Track A/B)
+├── selectWallet.ts          # wallet extension discovery/selection
+└── *.css                    # bm-/wc- prefixed styles, shared design tokens
+                              # defined on .bm-home in Homepage.css
+```
+
+### Current status
+
+- Wallet connect/disconnect and address display: working, talks to the connected wallet extension directly.
+- Business registration form: UI only. `registerBusinessTrackA` / `registerBusinessTrackB` are not yet wired up — there's no `ContractAPI` wrapper on the frontend yet, so submitting the form currently just logs the payload to the console.
+
+### Known gaps
+
+- No `ContractAPI` wrapper exists yet for calling contract circuits from the frontend (provider setup exists in `contracts/src/deploy.ts` and needs to be reused/adapted here).
+- `sector` and `location` are free text in the form but need `Bytes<32>` encoding before they can be passed to the contract — long values will currently be silently truncated once that encoding is added.
+- The deployed contract address (printed by `yarn deploy`) isn't yet wired into the frontend config — TBD where that lives (env var, config file, etc.) once `ContractAPI` is built.
+
 ## Troubleshooting
 
 **`yarn add` fails with "doesn't seem to be part of the project"**
