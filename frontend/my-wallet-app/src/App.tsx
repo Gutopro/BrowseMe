@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import WalletCard from './WalletCard';
 import Homepage from './Homepage';
+import RegistrationForm from './RegistrationForm';
 import '@midnight-ntwrk/dapp-connector-api';
 import { selectWallet } from './selectWallet';
+
+type View = 'wallet' | 'register';
 
 const App: React.FC = () => {
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [view, setView] = useState<View>('wallet');
 
   const handleConnect = async () => {
     console.log('Connect button clicked');
@@ -38,10 +42,20 @@ const App: React.FC = () => {
   const handleDisconnect = () => {
     setWalletAddress(null);
     setIsConnected(false);
+    setView('wallet');
+  };
+
+  // Used by Homepage's "Register a business" CTA — connects if needed,
+  // then jumps straight to the registration form.
+  const handleRegisterBusiness = async () => {
+    if (!isConnected) {
+      await handleConnect();
+    }
+    setView('register');
   };
 
   if (!isConnected) {
-    return <Homepage onConnectWallet={handleConnect} />;
+    return <Homepage onConnectWallet={handleConnect} onRegisterBusiness={handleRegisterBusiness} />;
   }
 
   return (
@@ -51,13 +65,35 @@ const App: React.FC = () => {
           Midnight Wallet Connector
         </h1>
       </header>
+
+      <nav className="bm-cta-row" style={{ justifyContent: 'center', padding: '2rem 1.5rem 0' }}>
+        <button
+          type="button"
+          className={`bm-btn ${view === 'wallet' ? 'bm-btn-primary' : 'bm-btn-ghost'}`}
+          onClick={() => setView('wallet')}
+        >
+          Wallet
+        </button>
+        <button
+          type="button"
+          className={`bm-btn ${view === 'register' ? 'bm-btn-primary' : 'bm-btn-ghost'}`}
+          onClick={() => setView('register')}
+        >
+          Register a business
+        </button>
+      </nav>
+
       <main className="bm-section">
-        <WalletCard
-          isConnected={isConnected}
-          walletAddress={walletAddress}
-          onConnect={handleConnect}
-          onDisconnect={handleDisconnect}
-        />
+        {view === 'wallet' ? (
+          <WalletCard
+            isConnected={isConnected}
+            walletAddress={walletAddress}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+          />
+        ) : (
+          <RegistrationForm />
+        )}
       </main>
     </div>
   );

@@ -1,0 +1,180 @@
+/* ============================================================
+   Registration form — extends the bm- design language.
+   Relies on the CSS custom properties defined on .bm-home in
+   Homepage.css (--ink, --gold, --indigo, --forest, --cream, etc.)
+   ============================================================ */
+
+.bm-reg {
+  max-width: 720px;
+}
+
+.bm-reg-head {
+  margin-bottom: 3rem;
+}
+
+.bm-reg-head .bm-h1 {
+  margin-top: 0.5rem;
+}
+
+.bm-reg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* ---- Shared field styles ---- */
+.bm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bm-field-row {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .bm-field-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.bm-field-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold-soft);
+}
+
+.bm-input {
+  font-family: var(--font-body);
+  font-size: 0.98rem;
+  color: var(--cream);
+  background: var(--ink-soft);
+  border: 1px solid rgba(243, 237, 224, 0.16);
+  border-radius: 3px;
+  padding: 0.85rem 1rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.bm-input::placeholder {
+  color: var(--cream-dim);
+  opacity: 0.55;
+}
+
+.bm-input:focus {
+  outline: none;
+  border-color: var(--gold);
+  background: var(--ink);
+}
+
+.bm-select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--gold) 50%),
+    linear-gradient(135deg, var(--gold) 50%, transparent 50%);
+  background-position: calc(100% - 1.2rem) center, calc(100% - 0.9rem) center;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.bm-select option {
+  background: var(--ink-soft);
+  color: var(--cream);
+}
+
+.bm-textarea {
+  resize: vertical;
+  min-height: 8rem;
+  line-height: 1.55;
+}
+
+.bm-field-hint {
+  font-size: 0.8rem;
+  color: var(--cream-dim);
+  opacity: 0.75;
+}
+
+.bm-field-error {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--terracotta);
+}
+
+/* ---- Track toggle (radio cards) ---- */
+.bm-track-toggle {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bm-track-toggle legend {
+  padding: 0;
+  margin-bottom: 0.5rem;
+}
+
+.bm-track-options {
+  display: grid;
+  gap: 1px;
+  background: rgba(243, 237, 224, 0.12);
+  border: 1px solid rgba(243, 237, 224, 0.12);
+}
+
+@media (min-width: 640px) {
+  .bm-track-options {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.bm-track-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--ink-soft);
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.bm-track-option:hover {
+  background: var(--ink);
+}
+
+.bm-track-option input[type='radio'] {
+  position: absolute;
+  top: 1.4rem;
+  right: 1.4rem;
+  accent-color: var(--gold);
+  width: 16px;
+  height: 16px;
+}
+
+.bm-track-option--active {
+  background: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+
+.bm-track-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--cream);
+  padding-right: 1.5rem;
+}
+
+.bm-track-body {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--cream-dim);
+}
+
+.bm-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
