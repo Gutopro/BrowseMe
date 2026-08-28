@@ -1,16 +1,49 @@
 # BrowseMe
 
-Privacy-preserving business verification and investment-discovery protocol, built on the Midnight Network using Compact smart contracts.
+> Privacy-preserving business verification and investment-discovery protocol built on the Midnight Network.
+
+BrowseMe lets businesses and investors discover and vet each other without exposing financials, identity, or negotiation details on a public ledger. It uses zero-knowledge proofs (via [Compact](https://docs.midnight.network/), Midnight's smart contract language) so claims like "this business is registered" or "this investor meets the threshold" can be verified on-chain without revealing the underlying data.
 
 Full design and architecture: [`docs/spec.md`](./docs/spec.md).
 
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Compiling the contract](#compiling-the-contract)
+  - [Running the local network](#running-the-local-network)
+  - [Deploying the contract](#deploying-the-contract)
+  - [Running tests](#running-tests)
+  - [Running the frontend](#running-the-frontend)
+- [Project Structure](#project-structure)
+- [Status](#status)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Architecture
+
+| Layer | Description |
+|---|---|
+| Contract (`contracts/`) | Compact smart contract defining registration, attestation, and handshake logic |
+| Local network (`midnight-local-dev`) | Containerized node, indexer, and proof server for development |
+| Frontend (`frontend/my-wallet-app`) | Vite + React + TypeScript app that connects a wallet extension to the deployed contract |
+
 ## Prerequisites
 
-- Node.js v22.17.1+
-- Docker (for [`midnight-local-dev`](https://github.com/midnightntwrk/midnight-local-dev), which runs the node, indexer, and proof server)
-- Git
+| Requirement | Version | Notes |
+|---|---|---|
+| [Node.js](https://nodejs.org/) | v22.17.1+ | Required for both the root project and the frontend |
+| [Docker](https://docs.docker.com/get-docker/) | Latest | Runs [`midnight-local-dev`](https://github.com/midnightntwrk/midnight-local-dev) (node, indexer, proof server) |
+| [Git](https://git-scm.com/) | Latest | |
+| Compact toolchain | 0.31.1 | Compiler; matching runtime is `@midnight-ntwrk/compact-runtime` 0.16.0. Installed separately, see below |
+| Midnight-compatible wallet extension | Latest | Required to use the frontend, connected to the `undeployed` network |
 
-## Setup
+Verify toolchain versions against [`VERSIONS.md`](./VERSIONS.md) before proceeding — these track the [Midnight compatibility matrix](https://docs.midnight.network/relnotes/support-matrix), which can move between releases.
+
+## Installation
 
 ```bash
 git clone <repo-url>
@@ -20,16 +53,16 @@ corepack enable
 yarn install --immutable
 ```
 
-`--immutable` fails the install if `yarn.lock` doesn't match `package.json`, instead of silently resolving different versions.
+`--immutable` fails the install if `yarn.lock` doesn't match `package.json`, rather than silently resolving different dependency versions.
 
-Install the Compact toolchain (a system binary, not an npm package):
+Install the Compact compiler (a system binary, not an npm package):
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/midnightntwrk/compact/releases/latest/download/compact-installer.sh | sh
 compact update 0.31.1
 ```
 
-Verify versions against [`VERSIONS.md`](./VERSIONS.md):
+Verify:
 
 ```bash
 compact --version
@@ -37,17 +70,19 @@ compact compile --version
 cat package.json    # confirm @midnight-ntwrk/compact-runtime is 0.16.0
 ```
 
-## Compile
+## Usage
+
+### Compiling the contract
 
 ```bash
 yarn compile
 ```
 
-Compiles `contracts/main.compact` into `contracts/managed/browseme`. Use `yarn compile:fast` (`--skip-zk`) while iterating; run the full `yarn compile` before testing or deploying.
+Compiles `contracts/main.compact` into `contracts/managed/browseme/`, including the ZK proving/verifying keys required at runtime. Use `yarn compile:fast` (`--skip-zk`) for faster iteration during development; always run a full `yarn compile` before testing, deploying, or running the frontend.
 
-## Run the local network
+### Running the local network
 
-This project uses [`midnight-local-dev`](https://github.com/midnightntwrk/midnight-local-dev) to run the node, indexer, and proof server together (`undeployed` network).
+[`midnight-local-dev`](https://github.com/midnightntwrk/midnight-local-dev) runs the node, indexer, and proof server together as Docker containers (`undeployed` network). Clone and start it in a separate directory:
 
 ```bash
 git clone https://github.com/midnightntwrk/midnight-local-dev.git
@@ -56,9 +91,7 @@ npm install
 npm start
 ```
 
-`npm start` pulls the pinned Docker images, starts all three services with health checks, initializes a pre-funded genesis wallet, and opens a funding menu. Leave it running in its own terminal.
-
-`deploy.ts` funds its own dev wallet automatically, so the interactive funding menu isn't needed for this project — the standalone container-only mode below is enough:
+`npm start` pulls the Docker images pinned in `standalone.yml`, starts all three services with health checks, and initializes a pre-funded genesis wallet via an interactive funding menu. That menu isn't needed for this project — `deploy.ts` funds its own dev wallet automatically — so the container-only mode below is sufficient:
 
 ```bash
 docker compose -f standalone.yml up -d    # start
@@ -66,99 +99,169 @@ docker compose -f standalone.yml logs -f  # logs
 docker compose -f standalone.yml down     # stop
 ```
 
-Endpoints used by `deploy.ts`: node `ws://127.0.0.1:9944`, indexer `http://127.0.0.1:8088`, proof server `http://127.0.0.1:6300`.
+| Service | Endpoint |
+|---|---|
+| Node | `ws://127.0.0.1:9944` |
+| Indexer (GraphQL) | `http://127.0.0.1:8088/api/v4/graphql` |
+| Proof server | `http://127.0.0.1:6300` |
 
-## Deploy
+These are also the fixed defaults the Lace wallet extension uses for the `undeployed` network, so a wallet configured for "Undeployed" points here automatically with no extra endpoint config.
+
+### Deploying the contract
 
 ```bash
 yarn deploy
 ```
 
-Runs `contracts/src/deploy.ts`, which derives a dev wallet from a fixed local seed, waits for wallet sync, and deploys the compiled contract. The dev wallet is pre-funded automatically — no manual funding step needed. On success it prints:
+Runs `contracts/src/deploy.ts`: derives a dev wallet from a fixed local seed, waits for wallet sync, funds it automatically, and deploys the compiled contract. On success:
 
 ```
 [OK] Contract deployed at: <contract-address>
 ```
 
-Save that address — it's needed to interact with the deployed contract, and a redeploy will produce a different one.
+Save this address — it's required by the frontend, and each redeploy produces a new one.
 
-## Test
+### Running tests
 
 ```bash
 yarn test
 ```
 
-Runs `contracts/src/test/browseme.test.ts` against `BrowseMeSimulator`.
+Runs `contracts/src/test/browseme.test.ts` against `BrowseMeSimulator`. No local network required.
 
-## Frontend
+### Running the frontend
 
-`frontend/my-wallet-app` is a Vite + React + TypeScript app that connects to a Midnight wallet extension and talks to the deployed contract.
+`frontend/my-wallet-app` connects a Midnight wallet extension to the deployed contract.
 
-### Prerequisites
-
-- Node.js v22.17.1+ (same as the root project)
-- A Midnight-compatible wallet browser extension, connected to the `undeployed` network (see [Run the local network](#run-the-local-network) above)
-
-### Setup
+**Prerequisites:** contract compiled and deployed (above), wallet extension connected to the `undeployed` network.
 
 ```bash
 cd frontend/my-wallet-app
 npm install
+cp .env.example .env    # fill in deployed contract address
 ```
 
-### Run
+**Sync ZK artifacts.** Vite's dev server only serves static files from `public/`. The compiled contract's proving/verifying keys and ZK IR live under `contracts/managed/browseme/`, which is gitignored and not visible to the dev server by default. Copy them into `public/` before starting:
+
+```bash
+mkdir -p public/keys public/zkir
+cp ../../contracts/managed/browseme/keys/* public/keys/
+cp -r ../../contracts/managed/browseme/zkir/* public/zkir/
+```
+
+Skipping this produces:
+
+```
+Error: Expected ZK artifact, but received text/html from http://localhost:5173/keys/registerBusinessTrackA.verifier
+```
+
+Re-run this copy after every contract recompile — see [Troubleshooting](#troubleshooting).
+
+Start the dev server:
 
 ```bash
 npm run dev
 ```
 
-Starts the Vite dev server (default `http://localhost:5173`). The local network (node, indexer, proof server) and a deployed contract must already be running — see [Run the local network](#run-the-local-network) and [Deploy](#deploy) above.
+| Script | Purpose |
+|---|---|
+| `npm run dev` | Start Vite dev server (`http://localhost:5173`) |
+| `npm run build` | Type-check (`tsc -b`) and production build |
+| `npm run lint` | Run ESLint |
+| `npm run preview` | Preview a production build locally |
 
-Other scripts:
-
-```bash
-npm run build    # type-check (tsc -b) and production build
-npm run lint      # eslint
-npm run preview   # preview a production build locally
-```
-
-### Structure
+## Project Structure
 
 ```
-src/
-├── App.tsx               # top-level view state, wallet connect/disconnect
-├── Homepage.tsx           # landing page (disconnected state)
-├── WalletCard.tsx          # connected wallet address display/copy/disconnect
-├── RegistrationForm.tsx     # business registration form (Track A/B)
-├── selectWallet.ts          # wallet extension discovery/selection
-└── *.css                    # bm-/wc- prefixed styles, shared design tokens
-                              # defined on .bm-home in Homepage.css
+BrowseMe/
+├── contracts/
+│   ├── main.compact              # contract source
+│   ├── managed/browseme/         # compiled output (gitignored): contract/, keys/, zkir/
+│   └── src/
+│       ├── deploy.ts              # deploy script
+│       ├── witnesses.ts           # private state / witness definitions
+│       └── test/browseme.test.ts  # simulator-based tests
+├── docs/
+│   └── spec.md                    # full design and architecture
+└── frontend/my-wallet-app/
+    ├── public/                    # static assets; keys/ + zkir/ synced here manually
+    └── src/
+        ├── App.tsx                 # top-level view state, wallet connect/disconnect
+        ├── Homepage.tsx             # landing page (disconnected state)
+        ├── WalletCard.tsx            # connected wallet display/copy/disconnect
+        ├── RegistrationForm.tsx       # business registration form (Track A/B)
+        ├── selectWallet.ts            # wallet extension discovery/selection
+        ├── providers.ts               # wallet + indexer + proof server + zk config setup
+        ├── types.ts                   # shared frontend types
+        ├── main.tsx                   # entry point
+        └── contract/
+            ├── ContractAPI.ts           # deploy/join/submitTx/state wrapper
+            └── common-types.ts          # shared contract-facing types
 ```
 
-### Current status
+## Status
 
-- Wallet connect/disconnect and address display: working, talks to the connected wallet extension directly.
-- Business registration form: UI only. `registerBusinessTrackA` / `registerBusinessTrackB` are not yet wired up — there's no `ContractAPI` wrapper on the frontend yet, so submitting the form currently just logs the payload to the console.
+**Working:**
+- Wallet connect/disconnect and address display
+- Provider initialization (wallet, indexer, proof server, zk config)
+- Business registration (Track A/B) end-to-end, via `ContractAPI`
 
-### Known gaps
-
-- No `ContractAPI` wrapper exists yet for calling contract circuits from the frontend (provider setup exists in `contracts/src/deploy.ts` and needs to be reused/adapted here).
-- `sector` and `location` are free text in the form but need `Bytes<32>` encoding before they can be passed to the contract — long values will currently be silently truncated once that encoding is added.
-- The deployed contract address (printed by `yarn deploy`) isn't yet wired into the frontend config — TBD where that lives (env var, config file, etc.) once `ContractAPI` is built.
+**Known limitations:**
+- `sector` and `location` form fields are plain text and need `Bytes<32>` encoding before being sent to the contract; long values will be silently truncated once added
+- ZK artifact sync (`public/keys/`, `public/zkir/`) is manual and must be repeated after every contract recompile — no automated hook yet
 
 ## Troubleshooting
 
-**`yarn add` fails with "doesn't seem to be part of the project"**
+<details>
+<summary><code>yarn add</code> fails with "doesn't seem to be part of the project"</summary>
+
 A stray `package.json` in a parent directory (e.g. your home folder) is being mistaken for a monorepo root. Check with `ls -la ~/package.json ~/yarn.lock`.
+</details>
 
-**Compiler/runtime version mismatch**
-Compare `compact --version` and `compact compile --version` against `VERSIONS.md`. See [Midnight's version mismatch guide](https://docs.midnight.network/how-to/fix-version-mismatches).
+<details>
+<summary>Compiler/runtime version mismatch</summary>
 
-**Docker port already allocated**
+Compare `compact --version` and `compact compile --version` against [`VERSIONS.md`](./VERSIONS.md). See [Midnight's version mismatch guide](https://docs.midnight.network/how-to/fix-version-mismatches).
+</details>
+
+<details>
+<summary>Docker port already allocated</summary>
+
 A previous local-network run still holds the port. From `midnight-local-dev`: `docker compose -f standalone.yml down`, or find the holder with `lsof -i :9944` / `lsof -i :6300`.
+</details>
 
-**Indexer exits on first start with `block number 1 not found`**
+<details>
+<summary>Indexer exits on first start with <code>block number 1 not found</code></summary>
+
 Startup race on a fresh chain — the indexer asked for a block the node hadn't produced yet. Restart it: `docker start midnight-indexer`.
+</details>
 
-**`expected instance of LedgerParameters` during deploy**
+<details>
+<summary><code>expected instance of LedgerParameters</code> during deploy</summary>
+
 Two different versions of `@midnight-ntwrk/ledger-v8` got resolved in the dependency tree, producing two copies of its WASM module. Fixed via the `resolutions` pin in `package.json` — if this recurs after a dependency bump, confirm the pinned version still satisfies every consumer's declared range.
+</details>
+
+<details>
+<summary>Frontend: <code>Expected ZK artifact, but received text/html from .../keys/&lt;circuit&gt;.verifier</code></summary>
+
+The compiled contract's ZK artifacts (`keys/`, `zkir/`) live under `contracts/managed/browseme/`, which is gitignored and not visible to Vite's dev server — only files under `frontend/my-wallet-app/public/` are served statically. A request for a missing static file falls through to Vite's SPA fallback (`index.html`), producing HTML instead of the expected binary key file.
+
+From `frontend/my-wallet-app`:
+
+```bash
+mkdir -p public/keys public/zkir
+cp ../../contracts/managed/browseme/keys/* public/keys/
+cp -r ../../contracts/managed/browseme/zkir/* public/zkir/
+```
+
+Re-run this after every contract recompile.
+</details>
+
+## Contributing
+
+Issues and pull requests are welcome. Please open an issue to discuss significant changes before submitting a PR.
+
+## License
+
+TBD.
