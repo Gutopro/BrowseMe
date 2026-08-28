@@ -122,7 +122,8 @@ const App: React.FC = () => {
       } else {
         await contractAPI.registerBusinessTrackB(commitment, payload.sector, payload.location);
       }
-      setView('wallet');
+      // No setView here — RegistrationForm shows its own success state
+      // and its "Register another business" button resets it locally.
     } catch (error) {
       console.log('registerBusiness failed:', error);
       setRegisterError('Registration failed — check the console for details.');

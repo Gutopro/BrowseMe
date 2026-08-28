@@ -27,9 +27,11 @@ export interface RegistrationPayload {
 }
 
 interface RegistrationFormProps {
-  onSubmit?: (payload: RegistrationPayload) => void;
+  onSubmit?: (payload: RegistrationPayload) => void | Promise<void>;
   submitting?: boolean;
 }
+
+type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
 
 const SECTOR_OPTIONS = [
   'Food & Beverage',
@@ -52,6 +54,8 @@ const emptyValues: BusinessFormValues = {
 const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submitting = false }) => {
   const [values, setValues] = useState<BusinessFormValues>(emptyValues);
   const [errors, setErrors] = useState<Partial<Record<keyof BusinessFormValues, string>>>({});
+  const [status, setStatus] = useState<SubmitStatus>('idle');
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const setField = <K extends keyof BusinessFormValues>(key: K, value: BusinessFormValues[K]) => {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -70,7 +74,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
@@ -84,13 +88,52 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
       },
     };
 
-    if (onSubmit) {
-      onSubmit(payload);
-    } else {
-      // Stage 2 will replace this with a ContractAPI call.
-      console.log('registerBusiness payload (contract wiring not built yet):', payload);
+    setStatus('submitting');
+    setSubmitError(null);
+
+    try {
+      if (onSubmit) {
+        await onSubmit(payload);
+      } else {
+        // Stage 2 will replace this with a ContractAPI call.
+        console.log('registerBusiness payload (contract wiring not built yet):', payload);
+      }
+      setStatus('success');
+      setValues(emptyValues);
+    } catch (err) {
+      setStatus('error');
+      setSubmitError(err instanceof Error ? err.message : 'Registration failed. Please try again.');
     }
   };
+
+  const isSubmitting = submitting || status === 'submitting';
+
+  if (status === 'success') {
+    return (
+      <div className="bm-home">
+        <section className="bm-section bm-reg">
+          <div className="bm-success">
+            <span className="bm-eyebrow-dark">Business registration</span>
+            <h1 className="bm-h1" style={{ fontSize: 'clamp(2rem, 4vw, 2.8rem)' }}>
+              You're registered.
+            </h1>
+            <p className="bm-lede">
+              {values.track === 'TRACK_A'
+                ? 'Your business is now listed. Investors can discover it via your sector and location — your private details stay off-chain.'
+                : "Your commitment is on-chain and pending community attestation. You'll be listed once the threshold clears."}
+            </p>
+            <button
+              type="button"
+              className="bm-btn bm-btn-primary"
+              onClick={() => setStatus('idle')}
+            >
+              Register another business
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="bm-home">
@@ -207,9 +250,15 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
             {errors.description && <span className="bm-field-error">{errors.description}</span>}
           </div>
 
+          {submitError && (
+            <div className="bm-field-error bm-submit-error" role="alert">
+              {submitError}
+            </div>
+          )}
+
           <div className="bm-cta-row" style={{ marginTop: '0.5rem' }}>
-            <button type="submit" className="bm-btn bm-btn-primary" disabled={submitting}>
-              {submitting ? 'Registering…' : 'Register business'}
+            <button type="submit" className="bm-btn bm-btn-primary" disabled={isSubmitting}>
+              {isSubmitting ? 'Registering…' : 'Register business'}
             </button>
           </div>
         </form>
