@@ -3,6 +3,8 @@ import './Homepage.css';
 
 interface HomepageProps {
   onConnectWallet?: () => void;
+  onRegisterBusiness: () => void;
+  onRegisterInvestor: () => void;
 }
 
 const LEDGER_ITEMS = [
@@ -61,7 +63,7 @@ const MarketFigure: React.FC = () => (
   </svg>
 );
 
-export const Homepage: React.FC<HomepageProps> = ({ onConnectWallet }) => {
+export const Homepage: React.FC<HomepageProps> = ({ onConnectWallet, onRegisterBusiness, onRegisterInvestor }) => {
   return (
     <div className="bm-home">
       {/* ---------------- Hero ---------------- */}
@@ -161,7 +163,7 @@ export const Homepage: React.FC<HomepageProps> = ({ onConnectWallet }) => {
             <li>Unshake at any point, no counterparty approval needed</li>
             <li>Tier recalculates automatically as attestations come in</li>
           </ul>
-          <button className="bm-btn bm-btn-ghost" onClick={onConnectWallet}>
+          <button className="bm-btn bm-btn-ghost" onClick={onRegisterBusiness}>
             Register a business
           </button>
         </div>
@@ -178,7 +180,7 @@ export const Homepage: React.FC<HomepageProps> = ({ onConnectWallet }) => {
             <li>Track B businesses carry visible attestation tiers</li>
             <li>Nothing about your interest is public until both sides agree</li>
           </ul>
-          <button className="bm-btn bm-btn-ghost" onClick={onConnectWallet}>
+          <button className="bm-btn bm-btn-ghost" onClick={onRegisterInvestor}>
             Register as an investor
           </button>
         </div>

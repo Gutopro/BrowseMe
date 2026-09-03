@@ -1,8 +1,11 @@
 // Goes to: frontend/my-wallet-app/src/contract/ContractAPI.ts
 //
-// Thin wrapper over the deployed BrowseMe contract. Mirrors deploy.ts's
-// contract construction exactly (CompiledContract.make + withWitnesses),
-// and exposes only the 7 `export circuit`s declared in main.compact.
+// Thin wrapper over the deployed BrowseMe contract. Built the way Midnight's
+// own docs build a CompiledContract (make<...>().pipe(withWitnesses(...),
+// withCompiledFileAssets(...))), NOT the `as any`-cast pattern deploy.ts
+// uses — that cast was hiding the same type errors we were chasing, not
+// solving them. Exposes only the 7 `export circuit`s declared in
+// main.compact.
 //
 // tierForCount and attestationNullifier are intentionally NOT wrapped here:
 // they are `pure circuit` (no `export`) in main.compact, called only from
@@ -10,8 +13,7 @@
 // generated TS API.
 
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
-import * as CompactJs from '@midnight-ntwrk/compact-js';
-// Same import deploy.ts uses — there is no separate named "CompiledBrowseMeContract" export.
+import { CompiledContract } from '@midnight-ntwrk/compact-js';
 import * as BrowseMe from '../../../../contracts/managed/browseme/contract/index.js';
 import { witnesses } from '../../../../contracts/src/witnesses.js';
 import {
@@ -31,31 +33,55 @@ function toBytes32(input: string): Uint8Array {
   return bytes;
 }
 
-// Built the same way deploy.ts builds browseMeContractInstance — do this
-// once at module load, not per-call.
-const browseMeContractInstance = CompactJs.CompiledContract.make(
+// Type alias keeps make()'s generic argument short. Passing the REAL typed
+// constructor (BrowseMe.Contract<BrowseMePrivateState>) here — not
+// `(BrowseMe as any).Contract` — is what lets TS infer C correctly; an
+// `any`-typed second argument is what collapsed withWitnesses' parameter
+// type to `never` in the last build.
+type BrowseMeContract = BrowseMe.Contract<BrowseMePrivateState>;
+
+// withCompiledFileAssets(...) is NOT optional: deployContract's/
+// findDeployedContract's overloads require the compiled contract's assets
+// slot to be `never`, which only happens once this is attached. Skipping
+// it is what caused deployContract's overloads to fall apart (rejecting
+// privateStateId on one, demanding an `args` field on the other).
+//
+// Path mirrors the relative-path pattern the imports above already use
+// (four levels up to contracts/managed/browseme) — verify against
+// contracts/src/deploy.ts's `zkArtifactsDir` if this doesn't resolve.
+const browseMeContractInstance = CompiledContract.make<BrowseMeContract>(
   'browseme',
-  (BrowseMe as any).Contract,
-).pipe(CompactJs.CompiledContract.withWitnesses(witnesses)) as any;
+  BrowseMe.Contract<BrowseMePrivateState>,
+).pipe(
+  CompiledContract.withWitnesses(witnesses),
+  CompiledContract.withCompiledFileAssets('../../../../contracts/managed/browseme'),
+);
 
 export class ContractAPI {
   public readonly contractAddress: string;
   public readonly state$;
 
-  private constructor(
-    private readonly deployedContract: any, // type against DeployedContract<...> once contract types are wired in
-    private readonly providers: BrowseMeProviders,
-  ) {
+  private readonly deployedContract: any; // type against DeployedContract<...> once contract types are wired in
+  private readonly providers: BrowseMeProviders;
+
+  private constructor(deployedContract: any, providers: BrowseMeProviders) {
+    this.deployedContract = deployedContract;
+    this.providers = providers;
     this.contractAddress = deployedContract.deployTxData.public.contractAddress;
-    this.state$ = providers.publicDataProvider
+    this.state$ = this.providers.publicDataProvider
       .contractStateObservable(this.contractAddress, { type: 'latest' })
-      .pipe
       // map raw ledger state to your derived UI state here, e.g.:
       // map((contractState) => ledger(contractState.data))
-      ();
+      .pipe();
   }
 
-  /** Deploys a fresh instance. Use once, then persist the resulting address. */
+  /**
+   * Deploys a fresh instance. Use once, then persist the resulting address.
+   * No `args` field: BrowseMe's constructor takes no arguments, and once
+   * that's true, `args` must be omitted entirely rather than passed as
+   * `[]` — passing it (even empty) is what triggered the second build
+   * error.
+   */
   static async deploy(providers: BrowseMeProviders, initialPrivateState: BrowseMePrivateState): Promise<ContractAPI> {
     const deployed = await deployContract(providers, {
       compiledContract: browseMeContractInstance,

@@ -29,6 +29,7 @@ export interface RegistrationPayload {
 interface RegistrationFormProps {
   onSubmit?: (payload: RegistrationPayload) => void | Promise<void>;
   submitting?: boolean;
+  onHome?: () => void; // optional — lets App.tsx wire a "Back to Home" button
 }
 
 type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
@@ -51,7 +52,7 @@ const emptyValues: BusinessFormValues = {
   description: '',
 };
 
-const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submitting = false }) => {
+const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submitting = false, onHome }) => {
   const [values, setValues] = useState<BusinessFormValues>(emptyValues);
   const [errors, setErrors] = useState<Partial<Record<keyof BusinessFormValues, string>>>({});
   const [status, setStatus] = useState<SubmitStatus>('idle');
@@ -122,13 +123,20 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
                 ? 'Your business is now listed. Investors can discover it via your sector and location — your private details stay off-chain.'
                 : "Your commitment is on-chain and pending community attestation. You'll be listed once the threshold clears."}
             </p>
-            <button
-              type="button"
-              className="bm-btn bm-btn-primary"
-              onClick={() => setStatus('idle')}
-            >
-              Register another business
-            </button>
+            <div className="bm-cta-row">
+              <button
+                type="button"
+                className="bm-btn bm-btn-primary"
+                onClick={() => setStatus('idle')}
+              >
+                Register another business
+              </button>
+              {onHome && (
+                <button type="button" className="bm-btn bm-btn-ghost" onClick={onHome}>
+                  Back to Home
+                </button>
+              )}
+            </div>
           </div>
         </section>
       </div>

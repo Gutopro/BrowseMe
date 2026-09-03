@@ -27,7 +27,7 @@ export type BrowseMePrivateState = {
 
 export const BROWSEME_PRIVATE_STATE_ID = 'browsemePrivateState';
 
-export type BrowseMeProviders = MidnightProviders<
+export type BrowseMeProviders = MidnightProviders <
   BrowseMeCircuits,
   typeof BROWSEME_PRIVATE_STATE_ID,
   BrowseMePrivateState
@@ -36,9 +36,10 @@ export type BrowseMeProviders = MidnightProviders<
 // Matches main.compact's 4-way AttesterType enum. Confirm the order
 // against the .compact source — enum values serialize by declaration
 // order, so a mismatch here silently sends the wrong attester type.
-export enum AttesterType {
-  Investor = 0,
-  BusinessTrackA = 1,
-  BusinessTrackB = 2,
-  ThirdParty = 3,
-}
+export const AttesterType = {
+  Investor: 0,
+  BusinessTrackA: 1,
+  BusinessTrackB: 2,
+  ThirdParty: 3,
+} as const;
+export type AttesterType = (typeof AttesterType)[keyof typeof AttesterType];

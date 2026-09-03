@@ -1,4 +1,4 @@
-import { WitnessContext } from "@midnight-ntwrk/compact-runtime";
+import type { WitnessContext } from "@midnight-ntwrk/compact-runtime";
 
 export type BrowseMePrivateState = {
   readonly callerAddress: Uint8Array;
