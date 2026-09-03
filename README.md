@@ -321,4 +321,4 @@ Issues and pull requests are welcome. Please open an issue to discuss significan
 
 ## License
 
-TBD.
+Apache License 2.0
