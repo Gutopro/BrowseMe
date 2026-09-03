@@ -3,9 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "scripts": {
+    "scripts": {
+    "predev": "node scripts/copy-zk-artifacts.js",
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "prebuild": "node scripts/copy-zk-artifacts.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },

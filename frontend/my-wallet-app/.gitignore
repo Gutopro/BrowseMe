@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# ZK artifacts — regenerated from contracts/managed/browseme/ by
+# scripts/copy-zk-artifacts.js (runs via predev/prebuild)
+public/keys/
+public/zkir/
