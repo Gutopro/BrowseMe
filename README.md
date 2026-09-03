@@ -17,6 +17,7 @@ Full design and architecture: [`docs/spec.md`](./docs/spec.md).
   - [Deploying the contract](#deploying-the-contract)
   - [Running tests](#running-tests)
   - [Running the frontend](#running-the-frontend)
+- [Verifying a fresh clone](#verifying-a-fresh-clone)
 - [Project Structure](#project-structure)
 - [Status](#status)
 - [Troubleshooting](#troubleshooting)
@@ -41,7 +42,7 @@ Full design and architecture: [`docs/spec.md`](./docs/spec.md).
 | Compact toolchain | 0.31.1 | Compiler; matching runtime is `@midnight-ntwrk/compact-runtime` 0.16.0. Installed separately, see below |
 | Midnight-compatible wallet extension | Latest | Required to use the frontend, connected to the `undeployed` network |
 
-Verify toolchain versions against [`VERSIONS.md`](./VERSIONS.md) before proceeding — these track the [Midnight compatibility matrix](https://docs.midnight.network/relnotes/support-matrix), which can move between releases.
+Verify toolchain versions against [`VERSIONS.md`](./VERSIONS.md) before proceeding. These track the [Midnight compatibility matrix](https://docs.midnight.network/relnotes/support-matrix), which can move between releases.
 
 ## Installation
 
@@ -91,7 +92,7 @@ npm install
 npm start
 ```
 
-`npm start` pulls the Docker images pinned in `standalone.yml`, starts all three services with health checks, and initializes a pre-funded genesis wallet via an interactive funding menu. That menu isn't needed for this project — `deploy.ts` funds its own dev wallet automatically — so the container-only mode below is sufficient:
+`npm start` pulls the Docker images pinned in `standalone.yml`, starts all three services with health checks, and initializes a pre-funded genesis wallet via an interactive funding menu. That menu isn't needed for this project, since `deploy.ts` funds its own dev wallet automatically, so the container-only mode below is sufficient:
 
 ```bash
 docker compose -f standalone.yml up -d    # start
@@ -119,7 +120,7 @@ Runs `contracts/src/deploy.ts`: derives a dev wallet from a fixed local seed, wa
 [OK] Contract deployed at: <contract-address>
 ```
 
-Save this address — it's required by the frontend, and each redeploy produces a new one.
+Save this address. It's required by the frontend, and each redeploy produces a new one.
 
 ### Running tests
 
@@ -131,7 +132,7 @@ Runs `contracts/src/test/browseme.test.ts` against `BrowseMeSimulator`. No local
 
 ### Running the frontend
 
-`frontend/my-wallet-app` connects a Midnight wallet extension to the deployed contract.
+`frontend/my-wallet-app` connects a Midnight wallet extension to the deployed contract. It supports two registration flows: business registration (Track A/B) and investor registration.
 
 **Prerequisites:** contract compiled and deployed (above), wallet extension connected to the `undeployed` network.
 
@@ -141,21 +142,15 @@ npm install
 cp .env.example .env    # fill in deployed contract address
 ```
 
-**Sync ZK artifacts.** Vite's dev server only serves static files from `public/`. The compiled contract's proving/verifying keys and ZK IR live under `contracts/managed/browseme/`, which is gitignored and not visible to the dev server by default. Copy them into `public/` before starting:
+**ZK artifacts sync automatically.** Vite's dev server only serves static files from `public/`. The compiled contract's proving/verifying keys and ZK IR live under `contracts/managed/browseme/`, which is gitignored and not visible to the dev server by default. A `predev`/`prebuild` hook (`scripts/copy-zk-artifacts.js`) copies them into `public/keys/` and `public/zkir/` automatically before `npm run dev` or `npm run build`, so no manual step is required. The script skips the copy (and stays silent) if the destination is already up to date, so it only does real work after a fresh `yarn compile`.
 
-```bash
-mkdir -p public/keys public/zkir
-cp ../../contracts/managed/browseme/keys/* public/keys/
-cp -r ../../contracts/managed/browseme/zkir/* public/zkir/
-```
-
-Skipping this produces:
+If you ever see:
 
 ```
 Error: Expected ZK artifact, but received text/html from http://localhost:5173/keys/registerBusinessTrackA.verifier
 ```
 
-Re-run this copy after every contract recompile — see [Troubleshooting](#troubleshooting).
+see [Troubleshooting](#troubleshooting). It means the hook didn't run or the artifacts are missing at the source.
 
 Start the dev server:
 
@@ -167,8 +162,29 @@ npm run dev
 |---|---|
 | `npm run dev` | Start Vite dev server (`http://localhost:5173`) |
 | `npm run build` | Type-check (`tsc -b`) and production build |
-| `npm run lint` | Run ESLint |
 | `npm run preview` | Preview a production build locally |
+
+## Verifying a fresh clone
+
+Before opening a PR or resubmitting for review, confirm the whole stack works from scratch:
+
+```bash
+git clone <repo-url>
+cd BrowseMe
+
+corepack enable
+yarn install --immutable
+
+yarn compile
+yarn test
+
+cd frontend/my-wallet-app
+npm install
+cp .env.example .env    # fill in deployed contract address
+npm run build
+```
+
+Then start [the local network](#running-the-local-network), [deploy the contract](#deploying-the-contract), and run `npm run dev` against it with a wallet connected to the `undeployed` network to confirm registration works end-to-end.
 
 ## Project Structure
 
@@ -184,19 +200,22 @@ BrowseMe/
 ├── docs/
 │   └── spec.md                    # full design and architecture
 └── frontend/my-wallet-app/
-    ├── public/                    # static assets; keys/ + zkir/ synced here manually
+    ├── public/                    # static assets; keys/ + zkir/ synced here automatically (predev/prebuild)
+    ├── scripts/
+    │   └── copy-zk-artifacts.js       # syncs contracts/managed/browseme/{keys,zkir} into public/
     └── src/
-        ├── App.tsx                 # top-level view state, wallet connect/disconnect
-        ├── Homepage.tsx             # landing page (disconnected state)
-        ├── WalletCard.tsx            # connected wallet display/copy/disconnect
-        ├── RegistrationForm.tsx       # business registration form (Track A/B)
-        ├── selectWallet.ts            # wallet extension discovery/selection
-        ├── providers.ts               # wallet + indexer + proof server + zk config setup
-        ├── types.ts                   # shared frontend types
-        ├── main.tsx                   # entry point
+        ├── App.tsx                     # top-level view state, wallet connect/disconnect
+        ├── Homepage.tsx                 # landing page (disconnected state)
+        ├── WalletCard.tsx                # connected wallet display/copy/disconnect
+        ├── RegistrationForm.tsx           # business registration form (Track A/B)
+        ├── InvestorRegistrationForm.tsx    # investor registration form (name, region, business ID, tax ID as private commitment fields)
+        ├── selectWallet.ts                # wallet extension discovery/selection
+        ├── providers.ts                   # wallet + indexer + proof server + zk config setup
+        ├── types.ts                       # shared frontend types
+        ├── main.tsx                       # entry point
         └── contract/
-            ├── ContractAPI.ts           # deploy/join/submitTx/state wrapper
-            └── common-types.ts          # shared contract-facing types
+            ├── ContractAPI.ts               # deploy/join/submitTx/state wrapper
+            └── common-types.ts              # shared contract-facing types
 ```
 
 ## Status
@@ -205,10 +224,11 @@ BrowseMe/
 - Wallet connect/disconnect and address display
 - Provider initialization (wallet, indexer, proof server, zk config)
 - Business registration (Track A/B) end-to-end, via `ContractAPI`
+- Investor registration end-to-end, via `ContractAPI`
+- Automated ZK artifact sync (`predev`/`prebuild` hooks)
 
 **Known limitations:**
 - `sector` and `location` form fields are plain text and need `Bytes<32>` encoding before being sent to the contract; long values will be silently truncated once added
-- ZK artifact sync (`public/keys/`, `public/zkir/`) is manual and must be repeated after every contract recompile — no automated hook yet
 
 ## Troubleshooting
 
@@ -233,29 +253,43 @@ A previous local-network run still holds the port. From `midnight-local-dev`: `d
 <details>
 <summary>Indexer exits on first start with <code>block number 1 not found</code></summary>
 
-Startup race on a fresh chain — the indexer asked for a block the node hadn't produced yet. Restart it: `docker start midnight-indexer`.
+Startup race on a fresh chain: the indexer asked for a block the node hadn't produced yet. Restart it: `docker start midnight-indexer`.
 </details>
 
 <details>
 <summary><code>expected instance of LedgerParameters</code> during deploy</summary>
 
-Two different versions of `@midnight-ntwrk/ledger-v8` got resolved in the dependency tree, producing two copies of its WASM module. Fixed via the `resolutions` pin in `package.json` — if this recurs after a dependency bump, confirm the pinned version still satisfies every consumer's declared range.
+Two different versions of `@midnight-ntwrk/ledger-v8` got resolved in the dependency tree, producing two copies of its WASM module. Fixed via the `resolutions` pin in `package.json`. If this recurs after a dependency bump, confirm the pinned version still satisfies every consumer's declared range.
 </details>
 
 <details>
 <summary>Frontend: <code>Expected ZK artifact, but received text/html from .../keys/&lt;circuit&gt;.verifier</code></summary>
 
-The compiled contract's ZK artifacts (`keys/`, `zkir/`) live under `contracts/managed/browseme/`, which is gitignored and not visible to Vite's dev server — only files under `frontend/my-wallet-app/public/` are served statically. A request for a missing static file falls through to Vite's SPA fallback (`index.html`), producing HTML instead of the expected binary key file.
+The compiled contract's ZK artifacts (`keys/`, `zkir/`) live under `contracts/managed/browseme/`, which is gitignored and not visible to Vite's dev server. Only files under `frontend/my-wallet-app/public/` are served statically. A request for a missing static file falls through to Vite's SPA fallback (`index.html`), producing HTML instead of the expected binary key file.
 
-From `frontend/my-wallet-app`:
+`predev`/`prebuild` hooks (`scripts/copy-zk-artifacts.js`) sync these automatically, so this shouldn't come up in normal use. If it does:
+
+1. Make sure the contract was compiled first, from the repo root:
+   ```bash
+   yarn compile
+   ```
+2. Make sure you ran `npm run dev` or `npm run build` and not some other entry point that bypasses the npm lifecycle hooks.
+3. Manually re-run the sync from `frontend/my-wallet-app`:
+   ```bash
+   node scripts/copy-zk-artifacts.js
+   ```
+</details>
+
+<details>
+<summary>Frontend: <code>Unexpected error executing scoped transaction '&lt;unnamed&gt;': expected instance of StateValue</code></summary>
+
+Two different versions of `@midnight-ntwrk/onchain-runtime-v3` got resolved in the frontend's dependency tree (`compact-runtime` pulling one version, `midnight-js-protocol` pulling another), producing two copies of its WASM module and two incompatible `StateValue` classes. Fixed via an `overrides` pin in `frontend/my-wallet-app/package.json`. If this recurs after a dependency bump, check which versions are actually resolved:
 
 ```bash
-mkdir -p public/keys public/zkir
-cp ../../contracts/managed/browseme/keys/* public/keys/
-cp -r ../../contracts/managed/browseme/zkir/* public/zkir/
+npm ls @midnight-ntwrk/onchain-runtime-v3
 ```
 
-Re-run this after every contract recompile.
+and confirm the pinned version still satisfies every consumer's declared range.
 </details>
 
 ## Contributing
