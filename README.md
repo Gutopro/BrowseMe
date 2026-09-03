@@ -2,13 +2,14 @@
 
 > Privacy-preserving business verification and investment-discovery protocol built on the Midnight Network.
 
-BrowseMe lets businesses and investors discover and vet each other without exposing financials, identity, or negotiation details on a public ledger. It uses zero-knowledge proofs (via [Compact](https://docs.midnight.network/), Midnight's smart contract language) so claims like "this business is registered" or "this investor meets the threshold" can be verified on-chain without revealing the underlying data.
+BrowseMe is designed to let businesses and investors discover and vet each other without exposing financials, identity, or negotiation details on a public ledger, using zero-knowledge proofs (via [Compact](https://docs.midnight.network/), Midnight's smart contract language) so claims like "this business is registered" or "this investor meets the threshold" can eventually be verified on-chain without revealing the underlying data. See [Privacy Model](#privacy-model) below for what's actually enforced on-chain today versus what's still on the roadmap.
 
 Full design and architecture: [`docs/spec.md`](./docs/spec.md).
 
 ## Table of Contents
 
 - [Architecture](#architecture)
+- [Privacy Model](#privacy-model)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -31,6 +32,25 @@ Full design and architecture: [`docs/spec.md`](./docs/spec.md).
 | Contract (`contracts/`) | Compact smart contract defining registration, attestation, and handshake logic |
 | Local network (`midnight-local-dev`) | Containerized node, indexer, and proof server for development |
 | Frontend (`frontend/my-wallet-app`) | Vite + React + TypeScript app that connects a wallet extension to the deployed contract |
+
+## Privacy Model
+
+This is what's actually public versus private on-chain today, not the long-term design goal.
+
+| Field | Visibility today | Notes |
+|---|---|---|
+| Sector | Public, on-chain | Coarse category used for discovery and matching before a handshake |
+| Location | Public, on-chain | Coarse region used for discovery and matching before a handshake |
+| Business name | Not submitted on-chain | Held client-side / off-chain |
+| Tax ID / registration number (Track A) | Not submitted on-chain | Held client-side / off-chain |
+| Community attestations (Track B) | Not submitted on-chain | Held client-side / off-chain |
+| Investor name, region, business ID, tax ID | Not submitted on-chain | Held client-side / off-chain |
+| Financials | Not submitted on-chain | Never sent to the contract |
+| Negotiation details | Not submitted on-chain | Exchanged off-chain after handshake |
+
+Sector and location are intentionally public: they're the coarse fields investors and businesses filter on before a handshake, and there is no privacy claim over them.
+
+**Commitment scheme status:** the fields marked "not submitted on-chain" above are currently kept off the ledger by simply not sending them, not by a cryptographic commitment. The contract's `witnesses.ts` uses a `placeholderCommitment()` in place of a real hash binding, so there is no on-chain, verifiable link yet between a registration and the private data behind it. Until that's replaced with a real commitment scheme (e.g. an in-circuit `persistentHash`), don't read this project as offering the "verified without revealing" ZK guarantee described in the intro. That's the target design, not the current state.
 
 ## Prerequisites
 
@@ -177,11 +197,13 @@ yarn install --immutable
 
 yarn compile
 yarn test
+yarn deploy
 
 cd frontend/my-wallet-app
 npm install
 cp .env.example .env    # fill in deployed contract address
 npm run build
+npm run dev
 ```
 
 Then start [the local network](#running-the-local-network), [deploy the contract](#deploying-the-contract), and run `npm run dev` against it with a wallet connected to the `undeployed` network to confirm registration works end-to-end.
@@ -229,6 +251,7 @@ BrowseMe/
 
 **Known limitations:**
 - `sector` and `location` form fields are plain text and need `Bytes<32>` encoding before being sent to the contract; long values will be silently truncated once added
+- Private registration fields are not yet bound to a real on-chain commitment; the contract uses a `placeholderCommitment()` stand-in. See [Privacy Model](#privacy-model).
 
 ## Troubleshooting
 
