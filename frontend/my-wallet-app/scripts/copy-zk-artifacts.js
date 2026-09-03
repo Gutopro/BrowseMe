@@ -7,7 +7,7 @@
 // CompiledContract.withCompiledFileAssets('../../../../contracts/managed/browseme').
 // If that path in ContractAPI.ts ever changes, update SOURCE_DIR below too.
 
-import { existsSync, cpSync, rmSync } from 'node:fs';
+import { existsSync, cpSync, rmSync, statSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,6 +19,22 @@ const DEST_DIR = join(__dirname, '..', 'public');
 
 const ARTIFACT_DIRS = ['keys', 'zkir'];
 
+// Latest mtime among all files in a directory tree, recursively.
+// Used to decide whether the destination is already up to date with
+// the source, so unchanged artifacts don't get re-copied (and logged)
+// on every single dev/build invocation.
+function latestMtime(path) {
+  const entry = statSync(path);
+  if (!entry.isDirectory()) return entry.mtimeMs;
+
+  let latest = entry.mtimeMs;
+  for (const child of readdirSync(path)) {
+    const childLatest = latestMtime(join(path, child));
+    if (childLatest > latest) latest = childLatest;
+  }
+  return latest;
+}
+
 for (const name of ARTIFACT_DIRS) {
   const src = join(SOURCE_DIR, name);
   const dest = join(DEST_DIR, name);
@@ -28,6 +44,12 @@ for (const name of ARTIFACT_DIRS) {
       `[copy-zk-artifacts] Missing ${src} — run "yarn compile" from the repo root first.`,
     );
     process.exit(1);
+  }
+
+  // Skip silently if dest already exists and is at least as fresh as
+  // src — avoids redundant copies (and log noise) on every dev/build.
+  if (existsSync(dest) && latestMtime(dest) >= latestMtime(src)) {
+    continue;
   }
 
   // Clear the destination first so stale artifacts from a previous

@@ -27,3 +27,4 @@ dist-ssr
 # scripts/copy-zk-artifacts.js (runs via predev/prebuild)
 public/keys/
 public/zkir/
+.env
