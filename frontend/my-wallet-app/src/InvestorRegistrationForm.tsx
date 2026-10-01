@@ -5,12 +5,10 @@ import { Link } from 'react-router-dom';
 // Mirrors contracts/main.compact:
 //   export circuit registerInvestor(investorCommitment: Bytes<32>): Bytes<32>
 //
-// Unlike business registration, registerInvestor takes a single opaque
-// commitment — there are no publicly-disclosed fields on this circuit.
-// Everything the investor enters here stays private and only ever leaves
-// the browser as a hash (the commitment). Stage 2 needs to replace
-// `commitmentPreimage` with a real Bytes<32> hash before this is wired to
-// ContractAPI.
+// Unlike business registration, registerInvestor discloses no fields on the
+// circuit call. Everything entered here stays private: RegisterInvestorPage
+// encodes it into the Bytes<32> fields of InvestorForm, stages it via
+// ContractAPI.setInvestorForm, and the commitment is computed in-circuit.
 
 export interface InvestorFormValues {
   name: string;        // company / business / investor name
@@ -19,9 +17,7 @@ export interface InvestorFormValues {
   taxId: string;
 }
 
-// What eventually gets passed to a ContractAPI.registerInvestor call.
-// `investorCommitment` is a placeholder here — Stage 2 needs to hash
-// commitmentPreimage into Bytes<32> before this is real.
+// What the form hands to its onSubmit handler (see RegisterInvestorPage).
 export interface InvestorRegistrationPayload {
   commitmentPreimage: InvestorFormValues;
 }
@@ -79,8 +75,8 @@ const InvestorRegistrationForm: React.FC<InvestorRegistrationFormProps> = ({
       if (onSubmit) {
         await onSubmit(payload);
       } else {
-        // Stage 2 will replace this with a ContractAPI.registerInvestor call.
-        console.log('registerInvestor payload (contract wiring not built yet):', payload);
+        // No onSubmit handler supplied (component rendered standalone): log only.
+        console.log('registerInvestor payload (no onSubmit handler):', payload);
       }
       setStatus('success');
       setValues(emptyValues);

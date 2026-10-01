@@ -15,10 +15,10 @@ export interface BusinessFormValues {
   description: string;
 }
 
-// What eventually gets passed to a ContractAPI call. `commitment` is a
-// placeholder here — Stage 2 needs to hash the full private form (name +
-// description + whatever else stays off-chain) into Bytes<32> before this
-// is real. sector/location will also need Bytes<32> encoding at that point.
+// What the form hands to its onSubmit handler. RegisterBusinessPage encodes
+// these strings into the Bytes<32> fields of BusinessForm and stages them via
+// ContractAPI.setBusinessForm; the commitment is computed in-circuit.
+// sector/location are also passed to the register call as disclosed fields.
 export interface RegistrationPayload {
   track: Track;
   sector: string;
@@ -96,8 +96,8 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
       if (onSubmit) {
         await onSubmit(payload);
       } else {
-        // Stage 2 will replace this with a ContractAPI call.
-        console.log('registerBusiness payload (contract wiring not built yet):', payload);
+        // No onSubmit handler supplied (component rendered standalone): log only.
+        console.log('registerBusiness payload (no onSubmit handler):', payload);
       }
       setStatus('success');
       setValues(emptyValues);
