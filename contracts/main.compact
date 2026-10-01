@@ -3,9 +3,25 @@ pragma language_version >= 0.22;
 import CompactStandardLibrary;
 
 // ============================================================
-// BrowseMe — core contract (v0.1 draft)
+// BrowseMe — core contract (v0.2 — commitments fixed)
 // Implements: §8.1 ledger state, §8.2 structs, §8.3 circuit
 // boundaries, and the security notes in §9.
+//
+// CHANGES FROM v0.1:
+// - businessCommitment and investorCommitment
+//   were previously accepted as pre-hashed Bytes<32> arguments and
+//   trusted verbatim. Nothing tied them to real private data, so a
+//   caller could submit an arbitrary 32 bytes as a "commitment."
+// - Each is now computed IN-CIRCUIT from a witness-supplied private
+//   struct + a fresh random nonce, using persistentCommit. This
+//   binds the on-chain commitment to real data and prevents
+//   brute-force guessing of low-entropy forms.
+// - Attestations no longer use a commitment. The duplicate-attester
+//   nullifier is derived from a deterministic hash of the attester's
+//   private identity (see submitAttestation).
+// - Placeholder struct fields below (BusinessForm, InvestorForm,
+//   AttesterIdentity) need to match your actual private data
+//   schema — adjust field names/types accordingly.
 // ============================================================
 
 // ---- Enums ----
@@ -22,7 +38,7 @@ struct BusinessListing {
   status: Status,
   sector: Bytes<32>,      // coarse — promoted field, §6
   location: Bytes<32>,    // coarse — promoted field, §6
-  commitment: Bytes<32>,  // hash of full private BusinessForm
+  commitment: Bytes<32>,  // commitment to full private BusinessForm
   listed: Boolean         // true once publicly discoverable (§4.2)
 }
 
@@ -34,21 +50,50 @@ struct HandshakeState {
   unshaken: Boolean
 }
 
+// PLACEHOLDER — align with your actual private BusinessForm schema.
+// Everything a business would rather not put on-chain in the clear.
+struct BusinessForm {
+  name: Bytes<32>,
+  description: Bytes<32>,
+  contactInfo: Bytes<32>,
+  sector: Bytes<32>,
+  location: Bytes<32>
+}
+
+// PLACEHOLDER — align with your actual private investor data schema.
+struct InvestorForm {
+  name: Bytes<32>,
+  region: Bytes<32>,
+  businessId: Bytes<32>,
+  taxId: Bytes<32>
+}
+
+// PLACEHOLDER — the real identity an attester is vouching with.
+struct AttesterIdentity {
+  identitySecret: Bytes<32>
+}
+
 // ---- Witnesses ----
 
-witness callerAddress(): Bytes<32>;  // caller's wallet-derived address, supplied by the DApp
+witness callerAddress(): Bytes<32>;         // caller's wallet-derived address, supplied by the DApp
+
+witness businessFormData(): BusinessForm;   // private business form, supplied by the DApp
+witness businessFormRand(): Bytes<32>;      // fresh randomness for the business commitment
+
+witness investorFormData(): InvestorForm;   // private investor form, supplied by the DApp
+witness investorFormRand(): Bytes<32>;      // fresh randomness for the investor commitment
+
+witness attesterIdentityData(): AttesterIdentity; // private attester identity, supplied by the DApp
 
 // ---- Public ledger state (§8.1) ----
 
 export ledger businesses: Map<Uint<64>, BusinessListing>;
 export ledger nextBusinessId: Uint<64>;
 export ledger businessOwners: Map<Uint<64>, Bytes<32>>;      // businessId -> registering caller's address
-
 export ledger investors: Map<Bytes<32>, Bytes<32>>;          // investorId (caller address) -> commitment
 export ledger attestationCounts: Map<Uint<64>, Uint<8>>;
 export ledger hasUnionAttestation: Map<Uint<64>, Boolean>;   // enforces §9.3 union requirement
 export ledger attestationNullifiers: Set<Bytes<32>>;         // prevents duplicate attestations (§9.3)
-
 export ledger pendingHandshakes: Map<Bytes<32>, HandshakeState>; // keyed by nonce (§9.4: single-use)
 
 constructor() {
@@ -58,24 +103,46 @@ constructor() {
 // ============================================================
 // Investor registration
 // ============================================================
+//
+// FIXED: investorCommitment used to be a caller-supplied Bytes<32>,
+// never checked against any real data. Now the private form comes
+// in via witness and the commitment is computed here.
 
-export circuit registerInvestor(investorCommitment: Bytes<32>): Bytes<32> {
+export circuit registerInvestor(): Bytes<32> {
   const caller = disclose(callerAddress());
-  investors.insert(caller, disclose(investorCommitment));
+  const form = investorFormData();
+  const rand = investorFormRand();
+
+  const investorCommitment = disclose(
+    persistentCommit<InvestorForm>(form, rand)
+  );
+
+  investors.insert(caller, investorCommitment);
   return caller;
 }
 
 // ============================================================
 // Business registration — Track A (§4.1)
 // ============================================================
+//
+// FIXED: businessCommitment used to be a caller-supplied Bytes<32>,
+// never checked against any real data. Now the private form comes
+// in via witness and the commitment is computed here. sector/
+// location remain public arguments since they're intentionally
+// coarse/promoted fields (§6), not part of the hidden form.
 
 export circuit registerBusinessTrackA(
-  businessCommitment: Bytes<32>,  // hash of full private BusinessForm
   sector: Bytes<32>,
   location: Bytes<32>
 ): Uint<64> {
   const id = nextBusinessId;
   const caller = disclose(callerAddress());
+  const form = businessFormData();
+  const rand = businessFormRand();
+
+  const businessCommitment = disclose(
+    persistentCommit<BusinessForm>(form, rand)
+  );
 
   businesses.insert(id, BusinessListing {
     track: Track.TRACK_A,
@@ -83,7 +150,7 @@ export circuit registerBusinessTrackA(
     status: Status.OPEN,
     sector: disclose(sector),
     location: disclose(location),
-    commitment: disclose(businessCommitment),
+    commitment: businessCommitment,
     listed: true                   // Track A: registration alone is sufficient (§4.1)
   });
   businessOwners.insert(id, caller);
@@ -94,14 +161,22 @@ export circuit registerBusinessTrackA(
 // ============================================================
 // Business registration — Track B (§4.2)
 // ============================================================
+//
+// FIXED: same as Track A — commitment is now derived in-circuit
+// from a witness-supplied form instead of trusted as a raw argument.
 
 export circuit registerBusinessTrackB(
-  businessCommitment: Bytes<32>,
   sector: Bytes<32>,
   location: Bytes<32>
 ): Uint<64> {
   const id = nextBusinessId;
   const caller = disclose(callerAddress());
+  const form = businessFormData();
+  const rand = businessFormRand();
+
+  const businessCommitment = disclose(
+    persistentCommit<BusinessForm>(form, rand)
+  );
 
   businesses.insert(id, BusinessListing {
     track: Track.TRACK_B,
@@ -109,7 +184,7 @@ export circuit registerBusinessTrackB(
     status: Status.OPEN,
     sector: disclose(sector),
     location: disclose(location),
-    commitment: disclose(businessCommitment),
+    commitment: businessCommitment,
     listed: false                  // not discoverable until threshold met (§4.2)
   });
   businessOwners.insert(id, caller);
@@ -122,11 +197,18 @@ export circuit registerBusinessTrackB(
 // ============================================================
 // Attestations (§4.2, §9.3, §10.2)
 // ============================================================
+//
+// FIXED: the attester used to be a caller-supplied Bytes<32> that was
+// never tied to a real identity, so anyone could invent fresh values and
+// vouch repeatedly, defeating the nullifier. Now the nullifier is derived
+// from a hash of the witness-supplied private identity. The hash is
+// deterministic, so the same attester always yields the same nullifier
+// for a given business. Random commitments cannot be used for this,
+// since fresh randomness would make every call look like a new attester.
 
 export circuit submitAttestation(
   businessId: Uint<64>,
-  attesterType: AttesterType,
-  attesterCommitment: Bytes<32>   // hash of attester identity, never plaintext (§9.3)
+  attesterType: AttesterType
 ): [] {
   const id = disclose(businessId);
   assert(businesses.member(id), "business does not exist");
@@ -137,8 +219,12 @@ export circuit submitAttestation(
   const currentCount = attestationCounts.lookup(id);
   assert(currentCount < 4, "maximum of 4 attestations reached");
 
+  const identity = attesterIdentityData();
+  // Hash only the secret: one person gets one key whatever type they claim,
+  // so they cannot attest twice for a business by switching attesterType.
+  const attesterKey = persistentHash<Bytes<32>>(identity.identitySecret);
   // reject duplicate attester/business pairs via nullifier (§9.3)
-  const nul = disclose(attestationNullifier(attesterCommitment, id));
+  const nul = disclose(attestationNullifier(attesterKey, id));
   assert(!attestationNullifiers.member(nul), "attester already attested for this business");
   attestationNullifiers.insert(nul);
 
@@ -180,9 +266,9 @@ pure circuit tierForCount(count: Uint<8>): Uint<8> {
   }
 }
 
-pure circuit attestationNullifier(attesterCommitment: Bytes<32>, businessId: Uint<64>): Bytes<32> {
+pure circuit attestationNullifier(attesterKey: Bytes<32>, businessId: Uint<64>): Bytes<32> {
   return persistentHash<Vector<3, Bytes<32>>>(
-    [pad(32, "browseme:attestation:v1"), attesterCommitment, businessId as Field as Bytes<32>]
+    [pad(32, "browseme:attestation:v1"), attesterKey, businessId as Field as Bytes<32>]
   );
 }
 

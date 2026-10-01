@@ -13,15 +13,15 @@ const b32 = (s: string) => {
 const commitmentA = b32("amaka-business-commitment");
 const sectorAgri = b32("Agriculture");
 const locationKwara = b32("Kwara");
-const unionCommitment = b32("union-attester-commitment");
-const religiousCommitment = b32("religious-attester-commitment");
+const unionSecret = b32("union-attester-secret");
+const religiousSecret = b32("religious-attester-secret");
 
 describe("BrowseMe", () => {
   it("Track B business is not listed below 2 attestations", () => {
     const amaka = testAddress();
     const sim = new BrowseMeSimulator(amaka);
-    const id = sim.registerBusinessTrackB(commitmentA, sectorAgri, locationKwara);
-    sim.submitAttestation(id, AttesterType.UNION, unionCommitment);
+    const id = sim.registerBusinessTrackB(sectorAgri, locationKwara);
+    sim.submitAttestation(id, AttesterType.UNION, unionSecret);
     const ledger = sim.getLedger();
     expect(ledger.businesses.lookup(id).listed).toEqual(false);
   });
@@ -29,9 +29,9 @@ describe("BrowseMe", () => {
   it("lists after union + one more attestation", () => {
     const amaka = testAddress();
     const sim = new BrowseMeSimulator(amaka);
-    const id = sim.registerBusinessTrackB(commitmentA, sectorAgri, locationKwara);
-    sim.submitAttestation(id, AttesterType.UNION, unionCommitment);
-    sim.submitAttestation(id, AttesterType.RELIGIOUS, religiousCommitment);
+    const id = sim.registerBusinessTrackB(sectorAgri, locationKwara);
+    sim.submitAttestation(id, AttesterType.UNION, unionSecret);
+    sim.submitAttestation(id, AttesterType.RELIGIOUS, religiousSecret);
     const ledger = sim.getLedger();
     expect(ledger.businesses.lookup(id).listed).toEqual(true);
     expect(ledger.businesses.lookup(id).tier).toEqual(3n);
@@ -40,9 +40,26 @@ describe("BrowseMe", () => {
   it("rejects a duplicate attester", () => {
     const amaka = testAddress();
     const sim = new BrowseMeSimulator(amaka);
-    const id = sim.registerBusinessTrackB(commitmentA, sectorAgri, locationKwara);
-    sim.submitAttestation(id, AttesterType.UNION, unionCommitment);
-    expect(() => sim.submitAttestation(id, AttesterType.UNION, unionCommitment)).toThrow();
+    const id = sim.registerBusinessTrackB(sectorAgri, locationKwara);
+    sim.submitAttestation(id, AttesterType.UNION, unionSecret);
+    expect(() => sim.submitAttestation(id, AttesterType.UNION, unionSecret)).toThrow();
+  });
+
+  it("rejects the same attester switching type", () => {
+    const amaka = testAddress();
+    const sim = new BrowseMeSimulator(amaka);
+    const id = sim.registerBusinessTrackB(sectorAgri, locationKwara);
+    sim.submitAttestation(id, AttesterType.UNION, unionSecret);
+    expect(() => sim.submitAttestation(id, AttesterType.RELIGIOUS, unionSecret)).toThrow();
+  });
+
+  it("Track A business is listed immediately", () => {
+    const amaka = testAddress();
+    const sim = new BrowseMeSimulator(amaka);
+    const id = sim.registerBusinessTrackA(sectorAgri, locationKwara);
+    const ledger = sim.getLedger();
+    expect(ledger.businesses.lookup(id).listed).toEqual(true);
+    expect(ledger.businesses.lookup(id).tier).toEqual(2n);
   });
 
   it("only the business owner can shake", () => {
@@ -50,11 +67,11 @@ describe("BrowseMe", () => {
     const tunde = testAddress();
     const stranger = testAddress();
     const sim = new BrowseMeSimulator(amaka);
-    const id = sim.registerBusinessTrackB(commitmentA, sectorAgri, locationKwara);
-    sim.submitAttestation(id, AttesterType.UNION, unionCommitment);
-    sim.submitAttestation(id, AttesterType.RELIGIOUS, religiousCommitment);
+    const id = sim.registerBusinessTrackB(sectorAgri, locationKwara);
+    sim.submitAttestation(id, AttesterType.UNION, unionSecret);
+    sim.submitAttestation(id, AttesterType.RELIGIOUS, religiousSecret);
 
-    sim.as(tunde).registerInvestor(b32("tunde-investor-commitment"));
+    sim.as(tunde).registerInvestor();
     const nonce = b32("handshake-nonce-1");
     sim.as(tunde).initiateHandshake(nonce, id);
 
@@ -66,11 +83,11 @@ describe("BrowseMe", () => {
     const amaka = testAddress();
     const tunde = testAddress();
     const sim = new BrowseMeSimulator(amaka);
-    const id = sim.registerBusinessTrackB(commitmentA, sectorAgri, locationKwara);
-    sim.submitAttestation(id, AttesterType.UNION, unionCommitment);
-    sim.submitAttestation(id, AttesterType.RELIGIOUS, religiousCommitment);
+    const id = sim.registerBusinessTrackB(sectorAgri, locationKwara);
+    sim.submitAttestation(id, AttesterType.UNION, unionSecret);
+    sim.submitAttestation(id, AttesterType.RELIGIOUS, religiousSecret);
 
-    sim.as(tunde).registerInvestor(b32("tunde-investor-commitment"));
+    sim.as(tunde).registerInvestor();
     const nonce = b32("handshake-nonce-2");
     sim.as(tunde).initiateHandshake(nonce, id);
     sim.as(tunde).unshake(nonce);

@@ -3,8 +3,8 @@
   "packageManager": "yarn@4.14.1",
   "type": "module",
   "scripts": {
-    "compile": "compact compile contracts/main.compact contracts/managed/browseme",
-    "compile:fast": "compact compile --skip-zk contracts/main.compact contracts/managed/browseme",
+    "compile": "compact compile +0.31.1 contracts/main.compact contracts/managed/browseme",
+    "compile:fast": "compact compile +0.31.1 --skip-zk contracts/main.compact contracts/managed/browseme",
     "test": "vitest run",
     "deploy": "tsx contracts/src/deploy.ts"
   },

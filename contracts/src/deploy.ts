@@ -36,7 +36,20 @@ import { InMemoryTransactionHistoryStorage } from '@midnight-ntwrk/wallet-sdk-ab
 // script runs `compact compile contracts/main.compact contracts/managed/browseme`,
 // so the compiled output lands at contracts/managed/browseme, not contracts/managed.
 import * as BrowseMe from '../managed/browseme/contract/index.js';
-import { witnesses, createBrowseMePrivateState, type BrowseMePrivateState } from './witnesses.js';
+import {
+  witnesses,
+  createBrowseMePrivateState,
+  type BrowseMePrivateState,
+  type BusinessForm,
+  type InvestorForm,
+  type AttesterIdentity,
+} from './witnesses.js';
+// Same private-state-ID string ContractAPI.ts/common-types.ts use — was
+// previously a separately hardcoded 'browseme-private-state' literal here,
+// which pointed deploy.ts at a different private-state bucket than
+// ContractAPI.join() looks in for the same contract address. Importing the
+// shared constant instead of a second literal keeps them from drifting apart.
+import { BROWSEME_PRIVATE_STATE_ID } from '../../frontend/my-wallet-app/src/contract/common-types.js';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const __filename = fileURLToPath(import.meta.url);
@@ -137,6 +150,34 @@ const signTransactionIntents = (
   }
 };
 
+// v0.2: createBrowseMePrivateState now requires businessForm/investorForm/
+// attesterIdentity alongside callerAddress (see witnesses.ts, updated when
+// commitments were fixed to be computed in-circuit from witness-supplied
+// forms rather than trusted as raw arguments). deploy.ts never registers
+// anything itself — it only deploys the contract — so these are just empty
+// placeholders, same as App.tsx uses. Left as placeholders for now; revisit
+// if a deploy-time registration step is ever added here.
+const emptyBytes32 = () => new Uint8Array(32);
+
+const emptyBusinessForm: BusinessForm = {
+  name: emptyBytes32(),
+  description: emptyBytes32(),
+  contactInfo: emptyBytes32(),
+  sector: emptyBytes32(),
+  location: emptyBytes32(),
+};
+
+const emptyInvestorForm: InvestorForm = {
+  name: emptyBytes32(),
+  region: emptyBytes32(),
+  businessId: emptyBytes32(),
+  taxId: emptyBytes32(),
+};
+
+const emptyAttesterIdentity: AttesterIdentity = {
+  identitySecret: emptyBytes32(),
+};
+
 export async function main(): Promise<string> {
   console.log('[INFO] Setting network ID...');
   setNetworkId(NETWORK_ID as any);
@@ -148,7 +189,6 @@ export async function main(): Promise<string> {
   const unshieldedKeystore = createKeystore(keys[Roles.NightExternal], NETWORK_ID);
 
   console.log('[INFO] Initializing wallet facade...');
-
   // With @midnight-ntwrk/ledger-v8 pinned to a single version via the
   // "overrides" entry in package.json, there is now exactly one copy of
   // the wasm module in node_modules, so a single LedgerParameters
@@ -257,20 +297,26 @@ export async function main(): Promise<string> {
   // (as exported from the compiled Compact output) — internally it later
   // does `new context.ctor(witnesses)` itself. Passing an already-built
   // instance here breaks that. Unlike the Credit contract (which has no
-  // witnesses and uses `withVacantWitnesses`), BrowseMe declares a real
-  // `callerAddress` witness, so we attach the actual witnesses object via
-  // `withWitnesses` instead.
+  // witnesses and uses `withVacantWitnesses`), BrowseMe declares real
+  // witnesses (callerAddress, businessFormData, businessFormRand,
+  // investorFormData, investorFormRand, attesterIdentityData),
+  // so we attach the actual witnesses object via `withWitnesses` instead.
   const browseMeContractInstance = CompactJs.CompiledContract.make(
     'browseme',
     (BrowseMe as any).Contract,
   ).pipe(CompactJs.CompiledContract.withWitnesses(witnesses)) as any;
 
-  const initialPrivateState: BrowseMePrivateState = createBrowseMePrivateState(callerAddressBytes);
+  const initialPrivateState: BrowseMePrivateState = createBrowseMePrivateState(
+    callerAddressBytes,
+    emptyBusinessForm,
+    emptyInvestorForm,
+    emptyAttesterIdentity,
+  );
 
   console.log('[INFO] Deploying BrowseMe contract...');
   const deployed = await deployContract(providers, {
     compiledContract: browseMeContractInstance,
-    privateStateId: 'browseme-private-state',
+    privateStateId: BROWSEME_PRIVATE_STATE_ID,
     initialPrivateState,
   });
 
