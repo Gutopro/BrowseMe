@@ -2,6 +2,8 @@
 
 > Privacy-preserving business verification and investment-discovery protocol built on the Midnight Network.
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+
 BrowseMe lets businesses and investors discover and vet each other without exposing financials, identity, or negotiation details on a public ledger. It uses zero-knowledge proofs (via [Compact](https://docs.midnight.network/), Midnight's smart contract language) so claims like "this business is registered" or "this investor meets the threshold" can be verified on-chain without revealing the underlying data.
 
 Full design and architecture: [`docs/spec.md`](./docs/spec.md).
@@ -175,6 +177,8 @@ cd BrowseMe
 corepack enable
 yarn install --immutable
 
+compact update 0.31.1
+
 yarn compile
 yarn test
 
@@ -190,6 +194,8 @@ Then start [the local network](#running-the-local-network), [deploy the contract
 
 ```
 BrowseMe/
+├── LICENSE                        # Apache License 2.0
+├── NOTICE                         # attribution notice
 ├── contracts/
 │   ├── main.compact              # contract source
 │   ├── managed/browseme/         # compiled output (gitignored): contract/, keys/, zkir/
@@ -204,7 +210,9 @@ BrowseMe/
     ├── scripts/
     │   └── copy-zk-artifacts.js       # syncs contracts/managed/browseme/{keys,zkir} into public/
     └── src/
-        ├── App.tsx                     # top-level view state, wallet connect/disconnect
+        ├── App.tsx                     # router setup and top-level layout (react-router-dom)
+        ├── WalletContext.tsx            # wallet connection state + ContractAPI provider
+        ├── pages/                       # route components: Home, Wallet, RegisterBusiness, RegisterInvestor
         ├── Homepage.tsx                 # landing page (disconnected state)
         ├── WalletCard.tsx                # connected wallet display/copy/disconnect
         ├── RegistrationForm.tsx           # business registration form (Track A/B)
@@ -226,9 +234,11 @@ BrowseMe/
 - Business registration (Track A/B) end-to-end, via `ContractAPI`
 - Investor registration end-to-end, via `ContractAPI`
 - Automated ZK artifact sync (`predev`/`prebuild` hooks)
+- Client-side routing (`react-router-dom`) with a shared wallet context
 
 **Known limitations:**
-- `sector` and `location` form fields are plain text and need `Bytes<32>` encoding before being sent to the contract; long values will be silently truncated once added
+- Form text is encoded to `Bytes<32>` by `toBytes32`, which silently truncates at 32 bytes. The registration forms don't validate length yet, so longer values (including business descriptions) are cut before they are committed
+- `contactInfo` isn't collected by the business form and is sent as an empty `Bytes<32>`
 
 ## Troubleshooting
 
@@ -292,10 +302,16 @@ npm ls @midnight-ntwrk/onchain-runtime-v3
 and confirm the pinned version still satisfies every consumer's declared range.
 </details>
 
+<details>
+<summary>Contract fails to load with a <code>compact-runtime</code> version error</summary>
+
+The compiled contract checks its runtime version on load (see `checkRuntimeVersion` near the top of `contracts/managed/browseme/contract/index.js`). `@midnight-ntwrk/compact-runtime` must be the same version in the root `package.json` and `frontend/my-wallet-app/package.json`, and must match the compiler (0.16.0 for Compact 0.31.1). If you change the compiler version, update both, recompile, and reinstall.
+</details>
+
 ## Contributing
 
-Issues and pull requests are welcome. Please open an issue to discuss significant changes before submitting a PR.
+Issues and pull requests are welcome. Please open an issue to discuss significant changes before submitting a PR. By submitting a contribution, you agree that it is licensed under the Apache License 2.0, as described in section 5 of the license.
 
 ## License
 
-TBD.
+Licensed under the [Apache License, Version 2.0](./LICENSE). See [`NOTICE`](./NOTICE) for attribution.
