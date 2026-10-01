@@ -1,0 +1,110 @@
+// src/WalletContext.tsx
+import React, { createContext, useContext, useRef, useState } from 'react';
+import type { ConnectedAPI } from '@midnight-ntwrk/dapp-connector-api';
+import { selectWallet } from './selectWallet';
+import { ContractAPI } from './contract/ContractAPI';
+import { initializeProviders, callerAddressBytesFromWallet } from './providers';
+import type { BusinessForm, InvestorForm, AttesterIdentity } from '../../../contracts/src/witnesses';
+
+const CONTRACT_ADDRESS = import.meta.env.VITE_BROWSEME_CONTRACT_ADDRESS as string;
+
+const emptyBytes32 = () => new Uint8Array(32);
+
+function buildInitialPrivateState(callerAddress: Uint8Array) {
+  const emptyBusinessForm: BusinessForm = {
+    name: emptyBytes32(), description: emptyBytes32(), contactInfo: emptyBytes32(),
+    sector: emptyBytes32(), location: emptyBytes32(),
+  };
+  const emptyInvestorForm: InvestorForm = {
+    name: emptyBytes32(), region: emptyBytes32(), businessId: emptyBytes32(), taxId: emptyBytes32(),
+  };
+  const emptyAttesterIdentity: AttesterIdentity = { identitySecret: emptyBytes32() };
+  return { callerAddress, businessForm: emptyBusinessForm, investorForm: emptyInvestorForm, attesterIdentity: emptyAttesterIdentity };
+}
+
+export function isLikelySessionExpiry(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /session|expired|timeout|not connected|disconnected/i.test(message);
+}
+
+interface WalletContextValue {
+  isConnected: boolean;
+  walletAddress: string | null;
+  contractAPI: ContractAPI | null;
+  contractError: string | null;
+  connecting: boolean;
+  connect: () => Promise<void>;
+  disconnect: () => void;
+}
+
+const WalletContext = createContext<WalletContextValue | null>(null);
+
+export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isConnected, setIsConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [contractAPI, setContractAPI] = useState<ContractAPI | null>(null);
+  const [contractError, setContractError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const connectedApiRef = useRef<ConnectedAPI | null>(null);
+
+  const connect = async () => {
+    setConnecting(true);
+    let connected = false;
+    let address: string | null = null;
+
+    try {
+      const wallet = selectWallet();
+      const connectedApi = await wallet.connect('undeployed');
+      connectedApiRef.current = connectedApi;
+
+      const { unshieldedAddress } = await connectedApi.getUnshieldedAddress();
+      address = unshieldedAddress;
+
+      const connectionStatus = await connectedApi.getConnectionStatus();
+      connected = connectionStatus.status === 'connected';
+    } catch (error) {
+      console.log('Wallet connection failed:', error);
+    }
+
+    setIsConnected(connected);
+    setWalletAddress(address);
+    setContractError(null);
+    setContractAPI(null);
+
+    if (connected) {
+      try {
+        if (!CONTRACT_ADDRESS) {
+          throw new Error('VITE_BROWSEME_CONTRACT_ADDRESS is not set.');
+        }
+        const providers = await initializeProviders(connectedApiRef.current!);
+        const callerAddress = await callerAddressBytesFromWallet(connectedApiRef.current!);
+        const initialPrivateState = buildInitialPrivateState(callerAddress);
+        const api = await ContractAPI.join(providers, CONTRACT_ADDRESS, initialPrivateState);
+        setContractAPI(api);
+      } catch (error) {
+        setContractError(error instanceof Error ? error.message : 'Failed to join the deployed contract.');
+      }
+    }
+    setConnecting(false);
+  };
+
+  const disconnect = () => {
+    setWalletAddress(null);
+    setIsConnected(false);
+    setContractAPI(null);
+    setContractError(null);
+    connectedApiRef.current = null;
+  };
+
+  return (
+    <WalletContext.Provider value={{ isConnected, walletAddress, contractAPI, contractError, connecting, connect, disconnect }}>
+      {children}
+    </WalletContext.Provider>
+  );
+};
+
+export function useWallet() {
+  const ctx = useContext(WalletContext);
+  if (!ctx) throw new Error('useWallet must be used inside <WalletProvider>');
+  return ctx;
+}

@@ -11,16 +11,26 @@
 // they are `pure circuit` (no `export`) in main.compact, called only from
 // inside submitAttestation, and are not present on the compiled contract's
 // generated TS API.
+//
+// v0.2 UPDATE (commitments fixed): registerInvestor, registerBusinessTrackA/B,
+// and submitAttestation no longer take a caller-supplied *Commitment argument.
+// The commitment is now computed in-circuit from a witness-supplied private
+// form (see contracts/src/witnesses.ts and main.compact). Callers MUST call
+// the matching set*Form/setAttesterIdentity method below to stage the form
+// in private state immediately before invoking the registration/attestation
+// call — the witness reads back whatever is currently staged there at
+// proving time.
 
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
 import * as BrowseMe from '../../../../contracts/managed/browseme/contract/index.js';
 import { witnesses } from '../../../../contracts/src/witnesses.js';
+import type { BusinessForm, InvestorForm, AttesterIdentity } from '../../../../contracts/src/witnesses.js';
 import {
   type BrowseMeProviders,
   type BrowseMePrivateState,
   BROWSEME_PRIVATE_STATE_ID,
-  AttesterType,
+  AttesterCategory,
 } from './common-types';
 
 // Encodes free-text form input into the fixed 32-byte arrays the circuits
@@ -106,36 +116,87 @@ export class ContractAPI {
     return new ContractAPI(deployed, providers);
   }
 
+  // ── Private state updates ────────────────────────────────────────────
+  // Circuits now read form data via witness rather than as call arguments,
+  // so the relevant field must be staged in private state before calling
+  // the matching registration/attestation circuit. Each method reads the
+  // current private state, merges in the new value, and writes it back.
+  // Call immediately before the matching circuit call — not meant to
+  // persist across unrelated calls.
+
+  async setInvestorForm(form: InvestorForm): Promise<void> {
+    const current = await this.providers.privateStateProvider.get(BROWSEME_PRIVATE_STATE_ID);
+    if (!current) throw new Error('No private state found — join the contract before registering.');
+    await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, {
+      ...current,
+      investorForm: form,
+    });
+  }
+
+  async setBusinessForm(form: BusinessForm): Promise<void> {
+    const current = await this.providers.privateStateProvider.get(BROWSEME_PRIVATE_STATE_ID);
+    if (!current) throw new Error('No private state found — join the contract before registering.');
+    await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, {
+      ...current,
+      businessForm: form,
+    });
+  }
+
+  async setAttesterIdentity(identity: AttesterIdentity): Promise<void> {
+    const current = await this.providers.privateStateProvider.get(BROWSEME_PRIVATE_STATE_ID);
+    if (!current) throw new Error('No private state found — join the contract before registering.');
+    await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, {
+      ...current,
+      attesterIdentity: identity,
+    });
+  }
+
   // ── Impure circuits (submit a transaction) ──────────────────────────
   // Signatures below are copied 1:1 from the `export circuit` declarations
   // in main.compact — argument count and order matter for callTx.
 
-  /** main.compact: registerInvestor(investorCommitment: Bytes<32>): Bytes<32> */
-  async registerInvestor(investorCommitment: Uint8Array) {
-    return this.deployedContract.callTx.registerInvestor(investorCommitment);
+  /**
+   * main.compact: registerInvestor(): Bytes<32>
+   * Call setInvestorForm() first — the commitment is computed in-circuit
+   * from privateState.investorForm + a fresh witness-generated rand.
+   */
+  async registerInvestor() {
+    return this.deployedContract.callTx.registerInvestor();
   }
 
-  /** main.compact: registerBusinessTrackA(businessCommitment, sector, location): Uint<64> */
-  async registerBusinessTrackA(businessCommitment: Uint8Array, sector: string, location: string) {
+  /**
+   * main.compact: registerBusinessTrackA(sector, location): Uint<64>
+   * Call setBusinessForm() first — the commitment is computed in-circuit
+   * from privateState.businessForm + a fresh witness-generated rand.
+   */
+  async registerBusinessTrackA(sector: string, location: string) {
     return this.deployedContract.callTx.registerBusinessTrackA(
-      businessCommitment,
       toBytes32(sector),
       toBytes32(location),
     );
   }
 
-  /** main.compact: registerBusinessTrackB(businessCommitment, sector, location): Uint<64> */
-  async registerBusinessTrackB(businessCommitment: Uint8Array, sector: string, location: string) {
+  /**
+   * main.compact: registerBusinessTrackB(sector, location): Uint<64>
+   * Call setBusinessForm() first — the commitment is computed in-circuit
+   * from privateState.businessForm + a fresh witness-generated rand.
+   */
+  async registerBusinessTrackB(sector: string, location: string) {
     return this.deployedContract.callTx.registerBusinessTrackB(
-      businessCommitment,
       toBytes32(sector),
       toBytes32(location),
     );
   }
 
-  /** main.compact: submitAttestation(businessId: Uint<64>, attesterType, attesterCommitment: Bytes<32>): [] */
-  async submitAttestation(businessId: bigint, attesterType: AttesterType, attesterCommitment: Uint8Array) {
-    return this.deployedContract.callTx.submitAttestation(businessId, attesterType, attesterCommitment);
+  /**
+   * main.compact: submitAttestation(businessId: Uint<64>, attesterType: AttesterType): []
+   * attesterType is main.compact's AttesterType enum (COMMUNITY, RELIGIOUS,
+   * UNION, EDUCATION) — see common-types.ts AttesterCategory. Call
+   * setAttesterIdentity() first — the commitment is computed in-circuit
+   * from privateState.attesterIdentity + a fresh witness-generated rand.
+   */
+  async submitAttestation(businessId: bigint, attesterType: AttesterCategory) {
+    return this.deployedContract.callTx.submitAttestation(businessId, attesterType);
   }
 
   /** main.compact: initiateHandshake(nonce: Bytes<32>, businessId: Uint<64>): [] */

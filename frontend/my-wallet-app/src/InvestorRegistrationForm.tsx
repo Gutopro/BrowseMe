@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './RegistrationForm.css';
+import { Link } from 'react-router-dom';
 
 // Mirrors contracts/main.compact:
 //   export circuit registerInvestor(investorCommitment: Bytes<32>): Bytes<32>
@@ -28,7 +29,6 @@ export interface InvestorRegistrationPayload {
 interface InvestorRegistrationFormProps {
   onSubmit?: (payload: InvestorRegistrationPayload) => void | Promise<void>;
   submitting?: boolean;
-  onHome?: () => void; // optional — lets App.tsx wire a "Back to Home" button
 }
 
 type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
@@ -43,7 +43,6 @@ const emptyValues: InvestorFormValues = {
 const InvestorRegistrationForm: React.FC<InvestorRegistrationFormProps> = ({
   onSubmit,
   submitting = false,
-  onHome,
 }) => {
   const [values, setValues] = useState<InvestorFormValues>(emptyValues);
   const [errors, setErrors] = useState<Partial<Record<keyof InvestorFormValues, string>>>({});
@@ -114,11 +113,7 @@ const InvestorRegistrationForm: React.FC<InvestorRegistrationFormProps> = ({
               >
                 Register another investor profile
               </button>
-              {onHome && (
-                <button type="button" className="bm-btn bm-btn-ghost" onClick={onHome}>
-                  Back to Home
-                </button>
-              )}
+              <Link to="/" className="bm-btn bm-btn-ghost">Back to Home</Link>
             </div>
           </div>
         </section>
