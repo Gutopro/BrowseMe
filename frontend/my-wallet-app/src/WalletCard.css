@@ -186,3 +186,39 @@
   border-color: var(--wc-cream);
   transform: translateY(-1px);
 }
+.wc-dot--connecting {
+    background: #d9a441;
+    animation: wc-pulse 1s ease-in-out infinite;
+}
+
+@keyframes wc-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
+}
+
+.wc-spinner {
+    display: inline-block;
+    width: 0.9em;
+    height: 0.9em;
+    margin-right: 0.4em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    vertical-align: -0.1em;
+    animation: wc-spin 0.7s linear infinite;
+}
+
+@keyframes wc-spin {
+    to { transform: rotate(360deg); }
+}
+
+.wc-error {
+    margin-top: 0.75rem;
+    color: #ff6b6b;
+    font-size: 0.95rem;
+}
+
+.wc-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}

@@ -2,7 +2,16 @@ import WalletCard from '../WalletCard';
 import { useWallet } from '../WalletContext';
 
 export default function WalletPage() {
-  const { isConnected, walletAddress, contractError, connect, disconnect } = useWallet();
+  const {
+    isConnected,
+    walletAddress,
+    contractError,
+    connectionError,
+    connecting,
+    connect,
+    disconnect,
+  } = useWallet();
+
   return (
     <>
       {contractError && (
@@ -13,6 +22,8 @@ export default function WalletPage() {
       <WalletCard
         isConnected={isConnected}
         walletAddress={walletAddress}
+        connecting={connecting}
+        connectionError={connectionError}
         onConnect={connect}
         onDisconnect={disconnect}
       />

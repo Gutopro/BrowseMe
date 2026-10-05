@@ -32,6 +32,7 @@ import {
   BROWSEME_PRIVATE_STATE_ID,
   AttesterCategory,
 } from './common-types';
+import { map, type Observable } from 'rxjs';
 
 // Encodes free-text form input into the fixed 32-byte arrays the circuits
 // expect. Truncates rather than throws — validate length in the form
@@ -41,6 +42,47 @@ function toBytes32(input: string): Uint8Array {
   const bytes = new Uint8Array(32);
   bytes.set(new TextEncoder().encode(input).slice(0, 32));
   return bytes;
+}
+
+export interface ListedBusiness {
+  id: bigint;
+  track: 'A' | 'B';
+  tier: number; // 0 = pending, 1 = T1 (highest) .. 3 = T3
+  status: 'INVESTING' | 'OPEN';
+  sector: string;
+  location: string;
+}
+
+// Inverse of toBytes32: drops the trailing zero padding and decodes UTF-8.
+function fromBytes32(bytes: Uint8Array): string {
+  let end = bytes.length;
+  while (end > 0 && bytes[end - 1] === 0) end--;
+  return new TextDecoder().decode(bytes.slice(0, end));
+}
+
+// Maps the contract's public `businesses` map to the listed entries only.
+// Enums compile to numbers: Track.TRACK_A = 0, Status.INVESTING = 0.
+// Deliberately ignores businessOwners and the per-business commitment.
+export function listedBusinessesFrom(state$: Observable<any>): Observable<ListedBusiness[]> {
+  return state$.pipe(
+    map((contractState) => {
+      const view = BrowseMe.ledger(contractState.data);
+      const out: ListedBusiness[] = [];
+      for (const [id, b] of view.businesses) {
+        if (!b.listed) continue;
+        out.push({
+          id,
+          track: b.track === 0 ? 'A' : 'B',
+          tier: Number(b.tier),
+          status: b.status === 0 ? 'INVESTING' : 'OPEN',
+          sector: fromBytes32(b.sector),
+          location: fromBytes32(b.location),
+        });
+      }
+      const rank = (t: number) => (t === 0 ? 99 : t);
+      return out.sort((a, b) => rank(a.tier) - rank(b.tier) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    }),
+  );
 }
 
 // Type alias keeps make()'s generic argument short. Passing the REAL typed

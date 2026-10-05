@@ -32,8 +32,9 @@ interface WalletContextValue {
   walletAddress: string | null;
   contractAPI: ContractAPI | null;
   contractError: string | null;
+  connectionError: string | null;
   connecting: boolean;
-  connect: () => Promise<void>;
+  connect: () => Promise<boolean>;
   disconnect: () => void;
 }
 
@@ -44,16 +45,23 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [contractAPI, setContractAPI] = useState<ContractAPI | null>(null);
   const [contractError, setContractError] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const connectedApiRef = useRef<ConnectedAPI | null>(null);
 
-  const connect = async () => {
+  const connect = async (): Promise<boolean> => {
     setConnecting(true);
+    setConnectionError(null);
     let connected = false;
     let address: string | null = null;
 
     try {
       const wallet = selectWallet();
+      if (!wallet) {
+        throw new Error(
+          'No Midnight wallet found. Install or enable the extension and allow site access for localhost.'
+        );
+      }
       const connectedApi = await wallet.connect('undeployed');
       connectedApiRef.current = connectedApi;
 
@@ -63,7 +71,10 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const connectionStatus = await connectedApi.getConnectionStatus();
       connected = connectionStatus.status === 'connected';
     } catch (error) {
-      console.log('Wallet connection failed:', error);
+      console.error('Wallet connection failed:', error);
+      setConnectionError(
+        error instanceof Error ? error.message : 'Wallet connection failed.'
+      );
     }
 
     setIsConnected(connected);
@@ -82,10 +93,13 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const api = await ContractAPI.join(providers, CONTRACT_ADDRESS, initialPrivateState);
         setContractAPI(api);
       } catch (error) {
+        console.error('Contract join failed:', error);
         setContractError(error instanceof Error ? error.message : 'Failed to join the deployed contract.');
       }
     }
+
     setConnecting(false);
+    return connected;
   };
 
   const disconnect = () => {
@@ -93,11 +107,14 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setIsConnected(false);
     setContractAPI(null);
     setContractError(null);
+    setConnectionError(null);
     connectedApiRef.current = null;
   };
 
   return (
-    <WalletContext.Provider value={{ isConnected, walletAddress, contractAPI, contractError, connecting, connect, disconnect }}>
+    <WalletContext.Provider
+      value={{ isConnected, walletAddress, contractAPI, contractError, connectionError, connecting, connect, disconnect }}
+    >
       {children}
     </WalletContext.Provider>
   );

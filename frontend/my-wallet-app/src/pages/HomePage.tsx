@@ -4,15 +4,16 @@ import { useWallet } from '../WalletContext';
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const { isConnected, connect } = useWallet();
+  const { isConnected, connect, connecting, connectionError, contractError } = useWallet();
 
   const goRegisterBusiness = async () => {
-    if (!isConnected) await connect();
-    navigate('/register-business');
+    const ok = isConnected || (await connect());
+    if (ok) navigate('/register-business');
   };
+
   const goRegisterInvestor = async () => {
-    if (!isConnected) await connect();
-    navigate('/register-investor');
+    const ok = isConnected || (await connect());
+    if (ok) navigate('/register-investor');
   };
 
   return (
@@ -20,6 +21,9 @@ export default function HomePage() {
       onConnectWallet={connect}
       onRegisterBusiness={goRegisterBusiness}
       onRegisterInvestor={goRegisterInvestor}
+      connectionError={connectionError}
+      contractError={contractError}
+      connecting={connecting}
     />
   );
 }

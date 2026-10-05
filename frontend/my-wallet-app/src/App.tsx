@@ -4,11 +4,13 @@ import HomePage from './pages/HomePage';
 import WalletPage from './pages/WalletPage';
 import RegisterBusinessPage from './pages/RegisterBusinessPage';
 import RegisterInvestorPage from './pages/RegisterInvestorPage';
+import ListedBusinessesPage from './pages/ListedBusinessesPage';
 
 const NavBar = () => (
   <nav className="bm-cta-row" style={{ justifyContent: 'center', padding: '2rem 1.5rem 0' }}>
     {[
       { to: '/', label: 'Home' },
+      { to: '/businesses', label: 'Listed businesses' },
       { to: '/wallet', label: 'Wallet' },
       { to: '/register-business', label: 'Register a business' },
       { to: '/register-investor', label: 'Register as investor' },
@@ -32,6 +34,7 @@ const App = () => (
       <main className="bm-section">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/businesses" element={<ListedBusinessesPage />} />
           <Route path="/wallet" element={<WalletPage />} />
           <Route path="/register-business" element={<RegisterBusinessPage />} />
           <Route path="/register-investor" element={<RegisterInvestorPage />} />

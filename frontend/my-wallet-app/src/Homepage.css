@@ -419,3 +419,7 @@
   opacity: 0.6;
   letter-spacing: 0.04em;
 }
+.bm-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}

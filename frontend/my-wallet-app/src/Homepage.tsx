@@ -5,6 +5,9 @@ interface HomepageProps {
   onConnectWallet?: () => void;
   onRegisterBusiness: () => void;
   onRegisterInvestor: () => void;
+  connectionError?: string | null;
+  contractError?: string | null;
+  connecting?: boolean;
 }
 
 const LEDGER_ITEMS = [
@@ -63,7 +66,34 @@ const MarketFigure: React.FC = () => (
   </svg>
 );
 
-export const Homepage: React.FC<HomepageProps> = ({ onConnectWallet, onRegisterBusiness, onRegisterInvestor }) => {
+const ErrorNotice: React.FC<{ message?: string | null }> = ({ message }) =>
+  message ? (
+    <p role="alert" style={{ color: '#ff6b6b', marginTop: '0.75rem', fontSize: '0.95rem' }}>
+      {message}
+    </p>
+  ) : null;
+
+const ConnectButton: React.FC<{ onClick?: () => void; connecting?: boolean }> = ({ onClick, connecting }) => (
+  <button
+    className="bm-btn bm-btn-primary"
+    onClick={onClick}
+    disabled={connecting}
+    aria-busy={connecting}
+  >
+    {connecting ? 'Connecting… check your wallet' : 'Connect Wallet'}
+  </button>
+);
+
+export const Homepage: React.FC<HomepageProps> = ({
+  onConnectWallet,
+  onRegisterBusiness,
+  onRegisterInvestor,
+  connectionError,
+  contractError,
+  connecting,
+}) => {
+  const errorMessage = connectionError ?? contractError ?? null;
+
   return (
     <div className="bm-home">
       {/* ---------------- Hero ---------------- */}
@@ -83,13 +113,12 @@ export const Homepage: React.FC<HomepageProps> = ({ onConnectWallet, onRegisterB
               wallet.
             </p>
             <div className="bm-cta-row">
-              <button className="bm-btn bm-btn-primary" onClick={onConnectWallet}>
-                Connect Wallet
-              </button>
+              <ConnectButton onClick={onConnectWallet} connecting={connecting} />
               <a className="bm-btn bm-btn-ghost" href="#process">
                 See how the handshake works
               </a>
             </div>
+            <ErrorNotice message={errorMessage} />
           </div>
           <div className="bm-hero-art">
             <MarketFigure />
@@ -163,7 +192,7 @@ export const Homepage: React.FC<HomepageProps> = ({ onConnectWallet, onRegisterB
             <li>Unshake at any point, no counterparty approval needed</li>
             <li>Tier recalculates automatically as attestations come in</li>
           </ul>
-          <button className="bm-btn bm-btn-ghost" onClick={onRegisterBusiness}>
+          <button className="bm-btn bm-btn-ghost" onClick={onRegisterBusiness} disabled={connecting}>
             Register a business
           </button>
         </div>
@@ -180,7 +209,7 @@ export const Homepage: React.FC<HomepageProps> = ({ onConnectWallet, onRegisterB
             <li>Track B businesses carry visible attestation tiers</li>
             <li>Nothing about your interest is public until both sides agree</li>
           </ul>
-          <button className="bm-btn bm-btn-ghost" onClick={onRegisterInvestor}>
+          <button className="bm-btn bm-btn-ghost" onClick={onRegisterInvestor} disabled={connecting}>
             Register as an investor
           </button>
         </div>
@@ -194,10 +223,9 @@ export const Homepage: React.FC<HomepageProps> = ({ onConnectWallet, onRegisterB
           where your last handshake left off.
         </p>
         <div className="bm-cta-row">
-          <button className="bm-btn bm-btn-primary" onClick={onConnectWallet}>
-            Connect Wallet
-          </button>
+          <ConnectButton onClick={onConnectWallet} connecting={connecting} />
         </div>
+        <ErrorNotice message={errorMessage} />
         <p className="bm-foot-note">BrowseMe — built on Midnight · 100 Days of Midnight, Day 16+</p>
       </section>
     </div>

@@ -2,14 +2,21 @@ import React, { useState } from "react";
 import type { WalletCardProps } from "./types";
 import "./WalletCard.css";
 
+type Props = WalletCardProps & {
+  connecting?: boolean;
+  connectionError?: string | null;
+};
+
 const truncateAddress = (address: string): string => {
   if (address.length <= 20) return address;
   return `${address.slice(0, 10)}…${address.slice(-8)}`;
 };
 
-const WalletCard: React.FC<WalletCardProps> = ({
+const WalletCard: React.FC<Props> = ({
   isConnected,
   walletAddress,
+  connecting = false,
+  connectionError,
   onConnect,
   onDisconnect,
 }) => {
@@ -26,17 +33,32 @@ const WalletCard: React.FC<WalletCardProps> = ({
     }
   };
 
+  const dotClass = connecting
+    ? "wc-dot--connecting"
+    : isConnected
+    ? "wc-dot--live"
+    : "wc-dot--off";
+
+  const statusLabel = connecting
+    ? "Connecting…"
+    : isConnected
+    ? "Wallet connected"
+    : "Wallet disconnected";
+
   return (
-    <div className="wc-card">
-      <div className="wc-status-row">
-        <span className={`wc-dot ${isConnected ? "wc-dot--live" : "wc-dot--off"}`} aria-hidden="true" />
-        <span className="wc-status-label">
-          {isConnected ? "Wallet connected" : "Wallet disconnected"}
-        </span>
+    <div className="wc-card" aria-busy={connecting}>
+      <div className="wc-status-row" role="status" aria-live="polite">
+        <span className={`wc-dot ${dotClass}`} aria-hidden="true" />
+        <span className="wc-status-label">{statusLabel}</span>
       </div>
 
       <div className="wc-body">
-        {isConnected && walletAddress ? (
+        {connecting ? (
+          <p className="wc-empty">
+            Waiting for your wallet. Approve the request in the extension popup — it may be
+            sitting behind this window.
+          </p>
+        ) : isConnected && walletAddress ? (
           <>
             <span className="wc-eyebrow">Unshielded address</span>
             <div className="wc-address-row">
@@ -54,7 +76,16 @@ const WalletCard: React.FC<WalletCardProps> = ({
             </div>
           </>
         ) : (
-          <p className="wc-empty">Connect your wallet to register a business, browse listings, or pick up a pending handshake.</p>
+          <p className="wc-empty">
+            Connect your wallet to register a business, browse listings, or pick up a pending
+            handshake.
+          </p>
+        )}
+
+        {connectionError && !connecting && (
+          <p className="wc-error" role="alert">
+            {connectionError}
+          </p>
         )}
       </div>
 
@@ -64,8 +95,21 @@ const WalletCard: React.FC<WalletCardProps> = ({
             Disconnect wallet
           </button>
         ) : (
-          <button type="button" className="wc-btn wc-btn-primary" onClick={onConnect}>
-            Connect wallet
+          <button
+            type="button"
+            className="wc-btn wc-btn-primary"
+            onClick={onConnect}
+            disabled={connecting}
+          >
+            {connecting ? (
+              <>
+                <span className="wc-spinner" aria-hidden="true" /> Connecting…
+              </>
+            ) : connectionError ? (
+              "Try again"
+            ) : (
+              "Connect wallet"
+            )}
           </button>
         )}
       </div>
