@@ -1,0 +1,124 @@
+/* Deals page — builds on BrowsePage.css (cards, tags, status pills) */
+
+.bm-deals-section {
+  margin-bottom: 3rem;
+}
+
+.bm-deals-title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--cream);
+  margin: 0 0 1rem;
+}
+
+/* ---- Handshake rows ---- */
+.bm-deal-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.bm-deal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  justify-content: space-between;
+  align-items: flex-end;
+  background: var(--ink-soft);
+  border: 1px solid rgba(243, 237, 224, 0.12);
+  border-radius: 6px;
+  padding: 1.25rem;
+}
+
+.bm-deal-main {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.bm-deal-copy {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--cream-dim);
+  margin: 0;
+  max-width: 52ch;
+}
+
+.bm-deal-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.bm-deal-actions .bm-btn {
+  padding: 0.7rem 1.25rem;
+  font-size: 0.88rem;
+}
+
+.bm-deal-status--pending {
+  color: var(--ink);
+  background: var(--gold-soft);
+}
+
+.bm-deal-status--sealed {
+  color: var(--cream);
+  background: var(--forest);
+}
+
+.bm-deal-status--ended {
+  color: var(--cream-dim);
+  border-color: rgba(243, 237, 224, 0.3);
+}
+
+/* ---- Track B progress ---- */
+.bm-progress {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-bottom: 0.9rem;
+}
+
+.bm-progress span {
+  height: 6px;
+  border-radius: 2px;
+  background: rgba(243, 237, 224, 0.15);
+}
+
+.bm-progress span.is-filled {
+  background: var(--gold);
+}
+
+.bm-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.1rem;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--cream-dim);
+}
+
+.bm-checklist li::before {
+  content: "○";
+  color: var(--cream-dim);
+  margin-right: 0.5rem;
+}
+
+.bm-checklist li.is-done {
+  color: var(--cream);
+}
+
+.bm-checklist li.is-done::before {
+  content: "●";
+  color: var(--gold);
+}
+
+.bm-deals-hint {
+  font-size: 0.9rem;
+  color: var(--cream-dim);
+}
+
+.bm-deals-hint a {
+  color: var(--gold-soft);
+}

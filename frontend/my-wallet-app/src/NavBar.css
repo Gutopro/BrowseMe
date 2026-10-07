@@ -1,0 +1,215 @@
+/* ============================================================
+   BrowseMe top bar — uses the shared tokens on :root
+   ============================================================ */
+
+.bm-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--ink);
+  border-bottom: 1px solid rgba(243, 237, 224, 0.12);
+  font-family: var(--font-body);
+}
+
+.bm-nav * {
+  box-sizing: border-box;
+}
+
+.bm-nav-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0.85rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.bm-nav-brand {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.35rem;
+  color: var(--cream);
+  text-decoration: none;
+  margin-right: auto;
+}
+
+.bm-nav-brand em {
+  font-style: italic;
+  color: var(--gold-soft);
+}
+
+.bm-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.bm-nav-link {
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--cream-dim);
+  text-decoration: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.bm-nav-link:hover {
+  color: var(--cream);
+}
+
+.bm-nav-link.is-active {
+  color: var(--gold-soft);
+  border-bottom-color: var(--gold);
+}
+
+.bm-nav-link:focus-visible,
+.bm-chip:focus-visible,
+.bm-nav-brand:focus-visible,
+.bm-nav-menu-item:focus-visible {
+  outline: 2px solid var(--gold-soft);
+  outline-offset: 2px;
+}
+
+/* ---- Dropdowns ---- */
+.bm-nav-dropdown {
+  position: relative;
+}
+
+.bm-nav-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  min-width: 240px;
+  background: var(--ink-soft);
+  border: 1px solid rgba(243, 237, 224, 0.14);
+  border-radius: 6px;
+  padding: 0.35rem;
+  box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.8);
+}
+
+.bm-nav-dropdown--right .bm-nav-menu {
+  left: auto;
+  right: 0;
+}
+
+.bm-nav-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  padding: 0.65rem 0.75rem;
+  color: var(--cream);
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+.bm-nav-menu-item strong {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.bm-nav-menu-item span {
+  font-size: 0.75rem;
+  color: var(--cream-dim);
+}
+
+.bm-nav-menu-item:hover {
+  background: rgba(243, 237, 224, 0.07);
+}
+
+/* ---- Wallet chip ---- */
+.bm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--cream);
+  background: var(--ink-soft);
+  border: 1px solid rgba(243, 237, 224, 0.2);
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.bm-chip:hover:not(:disabled) {
+  border-color: var(--cream);
+}
+
+.bm-chip:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.bm-chip--cta {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.85rem;
+  background: var(--gold);
+  color: var(--ink);
+  border-color: transparent;
+}
+
+.bm-chip--cta:hover:not(:disabled) {
+  background: var(--gold-soft);
+  border-color: transparent;
+}
+
+.bm-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.bm-chip-dot--live {
+  background: var(--gold);
+  box-shadow: 0 0 0 3px rgba(217, 164, 65, 0.2);
+}
+
+.bm-chip-dot--off {
+  background: var(--ink);
+  opacity: 0.5;
+}
+
+.bm-chip-dot--connecting {
+  background: var(--gold);
+  animation: bm-chip-blink 1s ease-in-out infinite;
+}
+
+@keyframes bm-chip-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bm-chip-dot--connecting {
+    animation: none;
+  }
+}
+
+/* ---- Small screens: brand + chip on row one, links on row two ---- */
+@media (max-width: 640px) {
+  .bm-nav-links {
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+  }
+  .bm-chip-address {
+    max-width: 9ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

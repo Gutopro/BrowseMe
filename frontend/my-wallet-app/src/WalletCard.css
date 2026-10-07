@@ -1,21 +1,18 @@
 /* ============================================================
-   WalletCard — shares the Homepage token system
-   (ink / indigo / gold / cream). If Homepage.css is already
-   loaded on the page, the --bm-* custom properties defined
-   there will already exist; the fallbacks below let this file
-   also stand alone if WalletCard renders outside .bm-home.
+   WalletCard — uses the shared BrowseMe tokens defined on :root
+   in Homepage.css (ink / indigo / gold / cream).
    ============================================================ */
 
 .wc-card {
-  --wc-ink: var(--ink, #14181c);
-  --wc-ink-soft: var(--ink-soft, #1d232a);
-  --wc-indigo: var(--indigo, #2b3a67);
-  --wc-gold: var(--gold, #d9a441);
-  --wc-gold-soft: var(--gold-soft, #f0c878);
-  --wc-cream: var(--cream, #f3ede0);
-  --wc-cream-dim: var(--cream-dim, #cfc7b4);
+  --wc-ink: var(--ink);
+  --wc-ink-soft: var(--ink-soft);
+  --wc-indigo: var(--indigo);
+  --wc-gold: var(--gold);
+  --wc-gold-soft: var(--gold-soft);
+  --wc-cream: var(--cream);
+  --wc-cream-dim: var(--cream-dim);
 
-  font-family: var(--font-body, "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif);
+  font-family: var(--font-body);
   background: var(--wc-ink-soft);
   border: 1px solid rgba(243, 237, 224, 0.12);
   border-radius: 6px;
@@ -55,6 +52,12 @@
   opacity: 0.5;
 }
 
+.wc-dot--connecting {
+  background: var(--wc-gold);
+  animation: wc-blink 1s ease-in-out infinite;
+}
+
+/* Glow pulse for the connected dot */
 @keyframes wc-pulse {
   0%, 100% {
     box-shadow: 0 0 0 4px rgba(217, 164, 65, 0.18);
@@ -64,14 +67,22 @@
   }
 }
 
+/* Fade + scale blink for the connecting dot */
+@keyframes wc-blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.3); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .wc-dot--live {
+  .wc-dot--live,
+  .wc-dot--connecting,
+  .wc-spinner {
     animation: none;
   }
 }
 
 .wc-status-label {
-  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -86,7 +97,7 @@
 
 .wc-eyebrow {
   display: block;
-  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 0.68rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -105,7 +116,7 @@
 }
 
 .wc-address {
-  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: 0.86rem;
   color: var(--wc-cream);
   margin: 0;
@@ -114,7 +125,7 @@
 }
 
 .wc-copy-btn {
-  font-family: var(--font-body, "IBM Plex Sans", sans-serif);
+  font-family: var(--font-body);
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--wc-gold-soft);
@@ -151,7 +162,7 @@
 
 .wc-btn {
   width: 100%;
-  font-family: var(--font-body, "IBM Plex Sans", sans-serif);
+  font-family: var(--font-body);
   font-weight: 600;
   font-size: 0.92rem;
   padding: 0.8rem 1.5rem;
@@ -166,12 +177,17 @@
   outline-offset: 3px;
 }
 
+.wc-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .wc-btn-primary {
   background: var(--wc-gold);
   color: var(--wc-ink);
 }
 
-.wc-btn-primary:hover {
+.wc-btn-primary:hover:not(:disabled) {
   background: var(--wc-gold-soft);
   transform: translateY(-1px);
 }
@@ -182,43 +198,30 @@
   color: var(--wc-cream);
 }
 
-.wc-btn-ghost:hover {
+.wc-btn-ghost:hover:not(:disabled) {
   border-color: var(--wc-cream);
   transform: translateY(-1px);
 }
-.wc-dot--connecting {
-    background: #d9a441;
-    animation: wc-pulse 1s ease-in-out infinite;
-}
 
-@keyframes wc-pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(1.3); }
-}
-
+/* ---- Spinner + error ---- */
 .wc-spinner {
-    display: inline-block;
-    width: 0.9em;
-    height: 0.9em;
-    margin-right: 0.4em;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    vertical-align: -0.1em;
-    animation: wc-spin 0.7s linear infinite;
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.4em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.1em;
+  animation: wc-spin 0.7s linear infinite;
 }
 
 @keyframes wc-spin {
-    to { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
 }
 
 .wc-error {
-    margin-top: 0.75rem;
-    color: #ff6b6b;
-    font-size: 0.95rem;
-}
-
-.wc-btn:disabled {
-    opacity: 0.6;
-    cursor: wait;
+  margin-top: 0.75rem;
+  color: #ff6b6b;
+  font-size: 0.95rem;
 }

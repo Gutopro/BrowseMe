@@ -49,5 +49,10 @@
 html,
 body {
   margin: 0;
-  background: #14181c;
+  background: var(--ink);
+}
+
+body {
+  color: var(--cream);
+  font-family: var(--font-body);
 }

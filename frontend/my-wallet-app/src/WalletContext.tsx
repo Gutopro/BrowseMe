@@ -8,6 +8,18 @@ import type { BusinessForm, InvestorForm, AttesterIdentity } from '../../../cont
 
 const CONTRACT_ADDRESS = import.meta.env.VITE_BROWSEME_CONTRACT_ADDRESS as string;
 
+// 1AM refuses connections while it is syncing (for example right after a
+// transaction). Retry instead of failing, for roughly a minute in total.
+const MAX_SYNC_ATTEMPTS = 20;
+const SYNC_RETRY_MS = 3000;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function isSyncingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /syncing|sync to finish/i.test(message);
+}
+
 const emptyBytes32 = () => new Uint8Array(32);
 
 function buildInitialPrivateState(callerAddress: Uint8Array) {
@@ -55,26 +67,36 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let connected = false;
     let address: string | null = null;
 
-    try {
-      const wallet = selectWallet();
-      if (!wallet) {
-        throw new Error(
-          'No Midnight wallet found. Install or enable the extension and allow site access for localhost.'
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const wallet = selectWallet();
+        if (!wallet) {
+          throw new Error(
+            'No Midnight wallet found. Install or enable the extension and allow site access for localhost.'
+          );
+        }
+        const connectedApi = await wallet.connect('undeployed');
+        connectedApiRef.current = connectedApi;
+
+        const { unshieldedAddress } = await connectedApi.getUnshieldedAddress();
+        address = unshieldedAddress;
+
+        const connectionStatus = await connectedApi.getConnectionStatus();
+        connected = connectionStatus.status === 'connected';
+        setConnectionError(null);
+        break;
+      } catch (error) {
+        if (isSyncingError(error) && attempt < MAX_SYNC_ATTEMPTS - 1) {
+          setConnectionError('Wallet is still syncing — retrying…');
+          await sleep(SYNC_RETRY_MS);
+          continue;
+        }
+        console.error('Wallet connection failed:', error);
+        setConnectionError(
+          error instanceof Error ? error.message : 'Wallet connection failed.'
         );
+        break;
       }
-      const connectedApi = await wallet.connect('undeployed');
-      connectedApiRef.current = connectedApi;
-
-      const { unshieldedAddress } = await connectedApi.getUnshieldedAddress();
-      address = unshieldedAddress;
-
-      const connectionStatus = await connectedApi.getConnectionStatus();
-      connected = connectionStatus.status === 'connected';
-    } catch (error) {
-      console.error('Wallet connection failed:', error);
-      setConnectionError(
-        error instanceof Error ? error.message : 'Wallet connection failed.'
-      );
     }
 
     setIsConnected(connected);

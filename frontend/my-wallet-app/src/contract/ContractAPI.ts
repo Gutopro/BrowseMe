@@ -20,6 +20,11 @@
 // in private state immediately before invoking the registration/attestation
 // call — the witness reads back whatever is currently staged there at
 // proving time.
+//
+// v0.3 UPDATE: state$ is now shared and replays the latest contract state
+// (shareReplay). Every useDeals/useListings mount used to open its own cold
+// indexer subscription and sit on `null` until the first reply, which left
+// the Browse button stuck on "Loading your wallet state…" after remounts.
 
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
@@ -32,7 +37,7 @@ import {
   BROWSEME_PRIVATE_STATE_ID,
   AttesterCategory,
 } from './common-types';
-import { map, type Observable } from 'rxjs';
+import { map, shareReplay, type Observable } from 'rxjs';
 
 // Encodes free-text form input into the fixed 32-byte arrays the circuits
 // expect. Truncates rather than throws — validate length in the form
@@ -85,6 +90,110 @@ export function listedBusinessesFrom(state$: Observable<any>): Observable<Listed
   );
 }
 
+// ── Deals view ───────────────────────────────────────────────────────
+
+export type HandshakeStatus = 'PENDING' | 'SEALED' | 'ENDED';
+
+export interface DealHandshake {
+  nonce: Uint8Array;
+  nonceHex: string;
+  businessId: bigint;
+  role: 'INVESTOR' | 'OWNER';
+  status: HandshakeStatus;
+  sector: string;
+  location: string;
+}
+
+export interface OwnedBusiness {
+  id: bigint;
+  track: 'A' | 'B';
+  tier: number;
+  listed: boolean;
+  attestations: number;
+  hasUnion: boolean;
+  sector: string;
+  location: string;
+}
+
+export interface DealsView {
+  isInvestor: boolean;
+  ownedBusinesses: OwnedBusiness[];
+  handshakes: DealHandshake[];
+}
+
+const toHex = (bytes: Uint8Array): string =>
+  Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+// Everything the connected wallet is party to, read from public ledger state.
+// `callerAddress` is the same 32 bytes the contract sees via callerAddress().
+export function dealsFrom(state$: Observable<any>, callerAddress: Uint8Array): Observable<DealsView> {
+  const me = toHex(callerAddress);
+
+  return state$.pipe(
+    map((contractState) => {
+      const view = BrowseMe.ledger(contractState.data);
+
+      const ownedBusinesses: OwnedBusiness[] = [];
+      for (const [id, owner] of view.businessOwners) {
+        if (toHex(owner) !== me) continue;
+        if (!view.businesses.member(id)) continue;
+        const b = view.businesses.lookup(id);
+        ownedBusinesses.push({
+          id,
+          track: b.track === 0 ? 'A' : 'B',
+          tier: Number(b.tier),
+          listed: b.listed,
+          attestations: view.attestationCounts.member(id) ? Number(view.attestationCounts.lookup(id)) : 0,
+          hasUnion: view.hasUnionAttestation.member(id) ? view.hasUnionAttestation.lookup(id) : false,
+          sector: fromBytes32(b.sector),
+          location: fromBytes32(b.location),
+        });
+      }
+      ownedBusinesses.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+      const handshakes: DealHandshake[] = [];
+      for (const [nonce, hs] of view.pendingHandshakes) {
+        const asInvestor = toHex(hs.investorId) === me;
+        const asOwner =
+          view.businessOwners.member(hs.businessId) &&
+          toHex(view.businessOwners.lookup(hs.businessId)) === me;
+        if (!asInvestor && !asOwner) continue;
+
+        const biz = view.businesses.member(hs.businessId) ? view.businesses.lookup(hs.businessId) : null;
+        handshakes.push({
+          nonce,
+          nonceHex: toHex(nonce),
+          businessId: hs.businessId,
+          role: asInvestor ? 'INVESTOR' : 'OWNER',
+          status: hs.unshaken ? 'ENDED' : hs.shaken ? 'SEALED' : 'PENDING',
+          sector: biz ? fromBytes32(biz.sector) : '',
+          location: biz ? fromBytes32(biz.location) : '',
+        });
+      }
+      const rank = (s: HandshakeStatus) => (s === 'PENDING' ? 0 : s === 'SEALED' ? 1 : 2);
+      handshakes.sort((a, b) => rank(a.status) - rank(b.status));
+
+      // Compare by hex instead of calling investors.member(callerAddress), the
+      // same way owners and handshakes are matched above. The console line
+      // is temporary debugging: remove it once the Browse button works.
+      let isInvestor = false;
+      const investorKeys: string[] = [];
+      for (const [key] of view.investors) {
+        const hex = toHex(key);
+        investorKeys.push(hex);
+        if (hex === me) isInvestor = true;
+      }
+      console.log('[dealsFrom] me:', me, 'investors:', investorKeys, 'isInvestor:', isInvestor);
+
+      return {
+        isInvestor,
+        ownedBusinesses,
+        handshakes,
+      };
+    }),
+  );
+}
+
 // Type alias keeps make()'s generic argument short. Passing the REAL typed
 // constructor (BrowseMe.Contract<BrowseMePrivateState>) here — not
 // `(BrowseMe as any).Contract` — is what lets TS infer C correctly; an
@@ -120,11 +229,17 @@ export class ContractAPI {
     this.deployedContract = deployedContract;
     this.providers = providers;
     this.contractAddress = deployedContract.deployTxData.public.contractAddress;
+
+    // One shared indexer subscription for the whole app, replaying the latest
+    // contract state to every new subscriber. refCount is deliberately left
+    // off: with refCount the cache resets whenever the subscriber count hits
+    // zero (which is exactly what a StrictMode remount does), and the new
+    // subscriber would wait for the indexer again. The subscription lives as
+    // long as this ContractAPI instance; connect()/disconnect() create a new
+    // instance, so the old one is garbage-collected with it.
     this.state$ = this.providers.publicDataProvider
       .contractStateObservable(this.contractAddress, { type: 'latest' })
-      // map raw ledger state to your derived UI state here, e.g.:
-      // map((contractState) => ledger(contractState.data))
-      .pipe();
+      .pipe(shareReplay({ bufferSize: 1, refCount: false }));
   }
 
   /**
@@ -173,6 +288,13 @@ export class ContractAPI {
       ...current,
       investorForm: form,
     });
+  }
+
+  /** The caller address bytes staged in private state when the wallet connected. */
+  async getCallerAddress(): Promise<Uint8Array> {
+    const current = await this.providers.privateStateProvider.get(BROWSEME_PRIVATE_STATE_ID);
+    if (!current) throw new Error('No private state found — join the contract first.');
+    return current.callerAddress;
   }
 
   async setBusinessForm(form: BusinessForm): Promise<void> {

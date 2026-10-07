@@ -1,0 +1,277 @@
+/* ============================================================
+   Browse page — anonymous listing cards (uses :root tokens)
+   ============================================================ */
+
+.bm-browse-head {
+  max-width: 900px;
+  margin-bottom: 2.5rem;
+}
+
+.bm-browse-head .bm-h2 {
+  margin-bottom: 0.9rem;
+}
+
+.bm-browse-sub {
+  max-width: 640px;
+  color: var(--cream-dim);
+  line-height: 1.6;
+  margin: 0 0 1.25rem;
+}
+
+/* ---- Disclosure strip ---- */
+.bm-disclosure {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.bm-disclosure-item {
+  font-size: 0.8rem;
+  color: var(--cream-dim);
+  background: var(--ink-soft);
+  border: 1px solid rgba(243, 237, 224, 0.12);
+  border-radius: 4px;
+  padding: 0.45rem 0.7rem;
+}
+
+.bm-disclosure-item span {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-right: 0.5rem;
+}
+
+.bm-disclosure-item--public span {
+  color: var(--gold-soft);
+}
+
+.bm-disclosure-item--private span {
+  color: var(--terracotta);
+}
+
+/* ---- Filters ---- */
+.bm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.25rem;
+  padding: 1rem 0 1.5rem;
+  border-top: 1px solid rgba(243, 237, 224, 0.12);
+}
+
+.bm-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.bm-filter span {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold-soft);
+}
+
+.bm-filter select {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--cream);
+  background: var(--ink-soft);
+  border: 1px solid rgba(243, 237, 224, 0.2);
+  border-radius: 3px;
+  padding: 0.55rem 0.75rem;
+  min-width: 11rem;
+}
+
+.bm-filter select:focus-visible,
+.bm-filter-check input:focus-visible {
+  outline: 2px solid var(--gold-soft);
+  outline-offset: 2px;
+}
+
+.bm-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--cream);
+  padding-bottom: 0.55rem;
+  cursor: pointer;
+}
+
+.bm-filter-check input {
+  accent-color: var(--gold);
+}
+
+.bm-filter-count {
+  margin: 0 0 0.55rem auto;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--cream-dim);
+}
+
+/* ---- Card grid ---- */
+.bm-card-grid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.bm-listing {
+  background: var(--ink-soft);
+  border: 1px solid rgba(243, 237, 224, 0.12);
+  border-radius: 6px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.bm-listing:hover {
+  border-color: rgba(217, 164, 65, 0.5);
+  transform: translateY(-2px);
+}
+
+.bm-listing-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.1rem;
+}
+
+.bm-listing-id {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--cream-dim);
+}
+
+.bm-status {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid transparent;
+}
+
+.bm-status--open {
+  color: var(--ink);
+  background: var(--gold);
+}
+
+.bm-status--investing {
+  color: var(--cream-dim);
+  border-color: rgba(243, 237, 224, 0.3);
+}
+
+.bm-listing-sector {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--cream);
+  margin: 0 0 0.3rem;
+}
+
+.bm-listing-location {
+  font-size: 0.9rem;
+  color: var(--cream-dim);
+  margin: 0 0 1.25rem;
+}
+
+.bm-listing-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: auto;
+}
+
+.bm-tag {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--cream-dim);
+  border: 1px solid rgba(243, 237, 224, 0.2);
+  border-radius: 3px;
+  padding: 0.2rem 0.5rem;
+}
+
+.bm-tag--gold {
+  color: var(--gold-soft);
+  border-color: rgba(217, 164, 65, 0.5);
+}
+
+/* ---- Card action ---- */
+.bm-listing-action {
+  margin-top: 1rem;
+}
+
+.bm-listing-action .bm-btn {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  font-size: 0.88rem;
+}
+
+.bm-listing-note {
+  display: block;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+  padding: 0.7rem 0;
+  border-top: 1px solid rgba(243, 237, 224, 0.12);
+}
+
+/* ---- States ---- */
+.bm-browse-status {
+  color: var(--cream-dim);
+}
+
+.bm-browse-empty {
+  border: 1px dashed rgba(243, 237, 224, 0.25);
+  border-radius: 6px;
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  color: var(--cream-dim);
+}
+
+.bm-browse-empty p {
+  margin: 0 0 1.25rem;
+}
+
+.bm-browse-empty p:last-child {
+  margin-bottom: 0;
+}
+
+.bm-browse-error {
+  color: #ff6b6b;
+  font-size: 0.95rem;
+  margin: 0 0 1.25rem;
+}
+
+.bm-deals-hint {
+  font-size: 0.9rem;
+  color: var(--cream-dim);
+  margin: 0 0 1.25rem;
+}
+
+.bm-deals-hint a {
+  color: var(--gold-soft);
+}
+
+@media (max-width: 640px) {
+  .bm-filter-count {
+    margin-left: 0;
+    width: 100%;
+  }
+}

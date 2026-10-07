@@ -2,9 +2,11 @@
    BrowseMe Homepage — design tokens
    Palette pulled from market/café reference mood: tungsten light,
    indigo plaid, dried-corn gold, terracotta roofs, adire patterns.
+   Tokens live on :root so the nav, wallet card and every page
+   can use them, not just things inside .bm-home.
    ============================================================ */
 
-.bm-home {
+:root {
   --ink: #14181c;
   --ink-soft: #1d232a;
   --indigo: #2b3a67;
@@ -19,7 +21,9 @@
   --font-display: "Fraunces", "Iowan Old Style", ui-serif, Georgia, serif;
   --font-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+}
 
+.bm-home {
   background: var(--ink);
   color: var(--cream);
   font-family: var(--font-body);
@@ -55,7 +59,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 6rem 1.5rem 4rem;
+  padding: 4rem 1.5rem 4rem;
   overflow: hidden;
   background:
     radial-gradient(ellipse 900px 500px at 15% -10%, rgba(217, 164, 65, 0.16), transparent 60%),
@@ -150,6 +154,8 @@
   border-radius: 3px;
   cursor: pointer;
   border: 1px solid transparent;
+  text-decoration: none;
+  display: inline-block;
   transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
@@ -158,12 +164,17 @@
   outline-offset: 3px;
 }
 
+.bm-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .bm-btn-primary {
   background: var(--gold);
   color: var(--ink);
 }
 
-.bm-btn-primary:hover {
+.bm-btn-primary:hover:not(:disabled) {
   background: var(--gold-soft);
   transform: translateY(-1px);
 }
@@ -174,7 +185,7 @@
   color: var(--cream);
 }
 
-.bm-btn-ghost:hover {
+.bm-btn-ghost:hover:not(:disabled) {
   border-color: var(--cream);
   transform: translateY(-1px);
 }
@@ -418,8 +429,4 @@
   color: var(--cream-dim);
   opacity: 0.6;
   letter-spacing: 0.04em;
-}
-.bm-btn:disabled {
-    opacity: 0.6;
-    cursor: wait;
 }
