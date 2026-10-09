@@ -4,13 +4,14 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 
-BrowseMe is designed to let businesses and investors discover and vet each other without exposing financials, identity, or negotiation details on a public ledger, using zero-knowledge proofs (via [Compact](https://docs.midnight.network/), Midnight's smart contract language) so claims like "this business is registered" or "this investor meets the threshold" can eventually be verified on-chain without revealing the underlying data. See [Privacy Model](#privacy-model) below for what's actually enforced on-chain today versus what's still on the roadmap.
+BrowseMe is designed to let businesses and investors discover and vet each other without exposing financials, identity, or negotiation details on a public ledger, using zero-knowledge proofs (via [Compact](https://docs.midnight.network/), Midnight's smart contract language). Private form data stays on the client and is bound on-chain by commitments computed in-circuit. Proving claims about that hidden data without revealing it, such as "this business is registered" or "this investor meets the threshold", is still on the roadmap. See [Privacy Model](#privacy-model) below for what's actually enforced on-chain today versus what's still on the roadmap.
 
 Full design and architecture: [`docs/spec.md`](./docs/spec.md).
 
 ## Table of Contents
 
 - [Architecture](#architecture)
+- [How it works](#how-it-works)
 - [Privacy Model](#privacy-model)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
@@ -33,7 +34,15 @@ Full design and architecture: [`docs/spec.md`](./docs/spec.md).
 |---|---|
 | Contract (`contracts/`) | Compact smart contract defining registration, attestation, and handshake logic |
 | Local network (`midnight-local-dev`) | Containerized node, indexer, and proof server for development |
-| Frontend (`frontend/my-wallet-app`) | Vite + React + TypeScript app that connects a wallet extension to the deployed contract |
+| Frontend (`frontend/my-wallet-app`) | Vite + React + TypeScript app that connects a wallet extension to the deployed contract and reads live ledger state |
+
+## How it works
+
+**Registration.** Businesses register on one of two tracks. Track A is for formal businesses with documentation such as a tax ID or registration number. They are listed immediately as Tier 2 and Open. Track B is for informal businesses without that paperwork. They stay unlisted until an attestation is provided. Investors register separately. In every case the private form fields stay on the client, and only a commitment to them goes on-chain, alongside the coarse sector and location used for discovery. See [Privacy Model](#privacy-model).
+
+**Browse.** The Browse page reads registered businesses from chain state and shows sector, location, track, tier, and status. Registered investors initiate handshakes from this page.
+
+**Handshake.** An investor initiates a handshake on a listing, and it starts as PENDING. The business shakes back to complete it. The Deals page lists a user's handshakes. After a completed handshake, the private details are meant to be viewable. That page is not built yet (see [Status](#status)).
 
 ## Privacy Model
 
@@ -43,6 +52,8 @@ This is what's actually public versus private on-chain today, not the long-term 
 |---|---|---|
 | Sector | Public, on-chain | Coarse category used for discovery and matching before a handshake |
 | Location | Public, on-chain | Coarse region used for discovery and matching before a handshake |
+| Business track, tier, and status | Public, on-chain | Shown on the Browse page; read from contract ledger state |
+| Handshake state (PENDING and later) | Public, on-chain | Read from contract ledger state and shown on the Deals page |
 | Business name | Not submitted on-chain | Held client-side / off-chain |
 | Tax ID / registration number (Track A) | Not submitted on-chain | Held client-side / off-chain |
 | Community attestations (Track B) | Not submitted on-chain | Held client-side / off-chain |
@@ -50,7 +61,7 @@ This is what's actually public versus private on-chain today, not the long-term 
 | Financials | Not submitted on-chain | Never sent to the contract |
 | Negotiation details | Not submitted on-chain | Exchanged off-chain after handshake |
 
-Sector and location are intentionally public: they're the coarse fields investors and businesses filter on before a handshake, and there is no privacy claim over them.
+Sector and location are intentionally public: they're the coarse fields investors and businesses filter on before a handshake, and there is no privacy claim over them. Track, tier, status, and handshake state are likewise public ledger state.
 
 **Commitment scheme status:** the contract now computes commitments to the private form fields in-circuit from witness data held on the client, replacing the earlier `placeholderCommitment()`. The private fields themselves are still never sent to the chain. See `contracts/main.compact` for the exact construction.
 
@@ -154,7 +165,7 @@ Runs `contracts/src/test/browseme.test.ts` against `BrowseMeSimulator`. No local
 
 ### Running the frontend
 
-`frontend/my-wallet-app` connects a Midnight wallet extension to the deployed contract. It supports two registration flows: business registration (Track A/B) and investor registration.
+`frontend/my-wallet-app` connects a Midnight wallet extension to the deployed contract. It currently includes registration (business Tracks A/B and investor), a Browse page that reads registered businesses from live chain state, handshake initiation, and a Deals page. See [Status](#status) for what is verified end to end.
 
 **Prerequisites:** contract compiled and deployed (above), wallet extension connected to the `undeployed` network.
 
@@ -234,7 +245,7 @@ BrowseMe/
     └── src/
         ├── App.tsx                     # router setup and top-level layout (react-router-dom)
         ├── WalletContext.tsx            # wallet connection state + ContractAPI provider
-        ├── pages/                       # route components: Home, Wallet, RegisterBusiness, RegisterInvestor
+        ├── NavBar.tsx                   # top navigation
         ├── Homepage.tsx                 # landing page (disconnected state)
         ├── WalletCard.tsx                # connected wallet display/copy/disconnect
         ├── RegistrationForm.tsx           # business registration form (Track A/B)
@@ -243,6 +254,17 @@ BrowseMe/
         ├── providers.ts                   # wallet + indexer + proof server + zk config setup
         ├── types.ts                       # shared frontend types
         ├── main.tsx                       # entry point
+        ├── *.css, assets/                 # component styles and static images
+        ├── pages/                         # route components
+        │   ├── HomePage.tsx                   # Home route
+        │   ├── WalletPage.tsx                 # Wallet route
+        │   ├── RegisterBusinessPage.tsx       # business registration route
+        │   ├── RegisterInvestorPage.tsx       # investor registration route
+        │   ├── ListedBusinessesPage.tsx       # Browse route: registered businesses from chain state, handshake initiation
+        │   ├── DealsPage.tsx                  # Deals route: handshakes
+        │   └── BrowsePage.css, DealsPage.css  # page styles
+        ├── hooks/
+        │   └── useDeals.ts                    # deal/handshake state for the Deals page
         └── contract/
             ├── ContractAPI.ts               # deploy/join/submitTx/state wrapper
             └── common-types.ts              # shared contract-facing types
@@ -251,12 +273,21 @@ BrowseMe/
 ## Status
 
 **Working:**
-- Wallet connect/disconnect and address display
+- Wallet connect/disconnect and address display, with a "Connecting... check your wallet" pending state
 - Provider initialization (wallet, indexer, proof server, zk config)
 - Business registration (Track A/B) end-to-end, via `ContractAPI`
 - Investor registration end-to-end, via `ContractAPI`
+- Browse page: reads registered businesses from on-chain state and shows sector, location, track, tier, and status (Track A is Tier 2 and Open; Track B stays unlisted until attested)
+- Investor-gated handshake initiation (a handshake goes to PENDING on the selected listing)
 - Automated ZK artifact sync (`predev`/`prebuild` hooks)
-- Client-side routing (`react-router-dom`) with a shared wallet context
+- Client-side routing (`react-router-dom`), nav bar, and a shared wallet context
+- Deals page
+- Business-side shake back (completes a pending handshake)
+- `unshake`
+
+**Not yet in the UI:**
+- Attestation flow that moves Track B businesses from unlisted to listed
+- Page for viewing the private details after a completed handshake
 
 **Known limitations:**
 - Form text is encoded to `Bytes<32>` by `toBytes32`, which silently truncates at 32 bytes. The registration forms don't validate length yet, so longer values (including business descriptions) are cut before they are committed
@@ -302,14 +333,14 @@ The compiled contract's ZK artifacts (`keys/`, `zkir/`) live under `contracts/ma
 `predev`/`prebuild` hooks (`scripts/copy-zk-artifacts.js`) sync these automatically, so this shouldn't come up in normal use. If it does:
 
 1. Make sure the contract was compiled first, from the repo root:
-   ```bash
+```bash
    yarn compile
-   ```
+```
 2. Make sure you ran `npm run dev` or `npm run build` and not some other entry point that bypasses the npm lifecycle hooks.
 3. Manually re-run the sync from `frontend/my-wallet-app`:
-   ```bash
+```bash
    node scripts/copy-zk-artifacts.js
-   ```
+```
 </details>
 
 <details>
@@ -328,6 +359,12 @@ and confirm the pinned version still satisfies every consumer's declared range.
 <summary>Contract fails to load with a <code>compact-runtime</code> version error</summary>
 
 The compiled contract checks its runtime version on load (see `checkRuntimeVersion` near the top of `contracts/managed/browseme/contract/index.js`). `@midnight-ntwrk/compact-runtime` must be the same version in the root `package.json` and `frontend/my-wallet-app/package.json`, and must match the compiler (0.16.0 for Compact 0.31.1). If you change the compiler version, update both, recompile, and reinstall.
+</details>
+
+<details>
+<summary>Submit fails with <code>1010 Invalid Transaction: Custom error: 170</code> (<code>InvalidDustSpendProof</code>)</summary>
+
+The DUST spend proof failed verification at the fee layer, before the node reaches the contract. The wallet's local view of its DUST coins has drifted from the node's real state, for example after a failed submission or a local chain reset. On the `undeployed` network, also check that the wallet's fast sync isn't pulling a remote snapshot for a different network: a mainnet snapshot is rejected on network ID mismatch, and the DUST refresh then fails silently. Clear the wallet's cache and force a full resync from the local node.
 </details>
 
 ## Contributing
