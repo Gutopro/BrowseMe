@@ -1,3 +1,4 @@
+// Goes to: frontend/my-wallet-app/src/pages/DealsPage.tsx
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useWallet } from '../WalletContext';
@@ -13,10 +14,10 @@ const STATUS_LABEL = { PENDING: 'Pending', SEALED: 'Sealed', ENDED: 'Ended' } as
 function handshakeCopy(h: DealHandshake): string {
   if (h.status === 'ENDED') return 'This handshake has ended.';
   if (h.status === 'SEALED') {
-    return 'Both sides are now entitled to each other’s data. Either side can unshake at any time.';
+    return 'Both sides have shaken. Open the details to share yours and read theirs. Either side can unshake at any time.';
   }
   return h.role === 'OWNER'
-    ? 'An investor wants to shake. Their details unlock only if you shake back.'
+    ? 'An investor wants to shake. Nothing can be shared unless you shake back.'
     : 'Waiting for the business owner to shake back. Nothing is delivered until they do.';
 }
 
@@ -197,6 +198,11 @@ export default function DealsPage() {
                         >
                           {working ? 'Signing…' : 'Shake'}
                         </button>
+                      )}
+                      {h.status === 'SEALED' && (
+                        <Link to={`/deals/${h.nonceHex}`} className="bm-btn bm-btn-primary">
+                          Details
+                        </Link>
                       )}
                       <button
                         type="button"

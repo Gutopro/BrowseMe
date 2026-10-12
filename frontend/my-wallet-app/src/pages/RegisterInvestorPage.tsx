@@ -1,14 +1,8 @@
 import { useState } from 'react';
 import InvestorRegistrationForm from '../InvestorRegistrationForm';
 import type { InvestorRegistrationPayload } from '../InvestorRegistrationForm';
-import type { InvestorForm } from '../../../../contracts/src/witnesses';
 import { useWallet, isLikelySessionExpiry } from '../WalletContext';
-
-function toBytes32(input: string): Uint8Array {
-  const bytes = new Uint8Array(32);
-  bytes.set(new TextEncoder().encode(input).slice(0, 32));
-  return bytes;
-}
+import { encodeInvestorForm } from '../contract/codec';
 
 export default function RegisterInvestorPage() {
   const { contractAPI } = useWallet();
@@ -21,20 +15,23 @@ export default function RegisterInvestorPage() {
       setError(message);
       throw new Error(message);
     }
+
+    // Throws a readable message if any field is over its byte limit, instead of
+    // silently cutting it. Done before the try so the message reaches the form.
+    const { name, region, businessId, taxId } = payload.commitmentPreimage;
+    const form = encodeInvestorForm({ name, region, businessId, taxId });
+
     setSubmitting(true);
     setError(null);
     try {
-      const { name, region, businessId, taxId } = payload.commitmentPreimage;
-      const form: InvestorForm = {
-        name: toBytes32(name),
-        region: toBytes32(region),
-        businessId: toBytes32(businessId),
-        taxId: toBytes32(taxId),
-      };
       await contractAPI.setInvestorForm(form);
       await contractAPI.registerInvestor();
     } catch (err) {
-      setError(isLikelySessionExpiry(err) ? 'Your wallet session expired — please reconnect and try again.' : 'Registration failed — check the console for details.');
+      setError(
+        isLikelySessionExpiry(err)
+          ? 'Your wallet session expired — please reconnect and try again.'
+          : 'Registration failed — check the console for details.',
+      );
       throw err;
     } finally {
       setSubmitting(false);

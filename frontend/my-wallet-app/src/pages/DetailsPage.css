@@ -1,0 +1,118 @@
+/* Goes to: frontend/my-wallet-app/src/pages/DetailsPage.css */
+/* Details page — builds on BrowsePage.css and DealsPage.css (status pills, buttons) */
+
+.bm-details-summary {
+  background: var(--ink-soft);
+  border: 1px solid rgba(243, 237, 224, 0.12);
+  border-radius: 6px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.bm-details-back {
+  display: inline-block;
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--gold-soft);
+  text-decoration: none;
+}
+
+.bm-details-back:hover {
+  text-decoration: underline;
+}
+
+.bm-details-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+@media (min-width: 860px) {
+  .bm-details-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+.bm-details-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: flex-start;
+  background: var(--ink-soft);
+  border: 1px solid rgba(243, 237, 224, 0.12);
+  border-radius: 6px;
+  padding: 1.5rem;
+  min-width: 0;
+}
+
+.bm-details-title {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--cream);
+  margin: 0;
+}
+
+.bm-details-sub {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--cream-dim);
+  margin: 0;
+}
+
+.bm-details-fields {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0;
+  width: 100%;
+}
+
+.bm-details-item dt {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold-soft);
+  margin-bottom: 0.2rem;
+}
+
+.bm-details-item dd {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--cream);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bm-details-item dd.is-empty {
+  color: var(--cream-dim);
+  font-style: italic;
+}
+
+.bm-details-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.7rem;
+  border-radius: 3px;
+}
+
+.bm-details-badge--ok {
+  color: var(--cream);
+  background: var(--forest);
+}
+
+.bm-details-badge--warn {
+  color: var(--terracotta);
+  border: 1px solid var(--terracotta);
+  background: rgba(216, 106, 79, 0.08);
+}
+
+.bm-details-problem {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--terracotta);
+  margin: 0;
+}

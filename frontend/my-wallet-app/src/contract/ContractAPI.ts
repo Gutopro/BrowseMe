@@ -3,46 +3,57 @@
 // Thin wrapper over the deployed BrowseMe contract. Built the way Midnight's
 // own docs build a CompiledContract (make<...>().pipe(withWitnesses(...),
 // withCompiledFileAssets(...))), NOT the `as any`-cast pattern deploy.ts
-// uses — that cast was hiding the same type errors we were chasing, not
-// solving them. Exposes only the 7 `export circuit`s declared in
-// main.compact.
+// uses. Exposes the 9 `export circuit`s declared in main.compact.
 //
 // tierForCount and attestationNullifier are intentionally NOT wrapped here:
-// they are `pure circuit` (no `export`) in main.compact, called only from
-// inside submitAttestation, and are not present on the compiled contract's
-// generated TS API.
+// they are `pure circuit` (no `export`) in main.compact.
 //
-// v0.2 UPDATE (commitments fixed): registerInvestor, registerBusinessTrackA/B,
-// and submitAttestation no longer take a caller-supplied *Commitment argument.
-// The commitment is now computed in-circuit from a witness-supplied private
-// form (see contracts/src/witnesses.ts and main.compact). Callers MUST call
-// the matching set*Form/setAttesterIdentity method below to stage the form
-// in private state immediately before invoking the registration/attestation
-// call — the witness reads back whatever is currently staged there at
-// proving time.
+// v0.2: commitments are computed in-circuit from a witness-supplied private
+// form. Callers MUST call the matching set*Form/setAttesterIdentity method
+// immediately before the registration/attestation call.
 //
-// v0.3 UPDATE: state$ is now shared and replays the latest contract state
-// (shareReplay). Every useDeals/useListings mount used to open its own cold
-// indexer subscription and sit on `null` until the first reply, which left
-// the Browse button stuck on "Loading your wallet state…" after remounts.
+// v0.3: state$ is shared and replays the latest contract state (shareReplay).
+//
+// v0.4 (details sharing):
+//   - initiateHandshake / shake generate (once) and publish this wallet's
+//     encryption key. Call sites are unchanged.
+//   - deliverMyDetails encrypts this wallet's registered details to the other
+//     party's key and stores the package on-chain; openCounterpartyDetails
+//     decrypts theirs and verifies it against their on-chain commitment.
+//   - join() merges any private state already stored in this browser instead
+//     of trusting the caller's initial state, so saved forms, commitment
+//     randomness and the details key survive reconnects.
+//   - text encoding moved to codec.ts, which throws instead of truncating.
 
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
 import * as BrowseMe from '../../../../contracts/managed/browseme/contract/index.js';
-import { witnesses } from '../../../../contracts/src/witnesses.js';
-import type { BusinessForm, InvestorForm, AttesterIdentity } from '../../../../contracts/src/witnesses.js';
+import { witnesses, emptyPrivateState } from '../../../../contracts/src/witnesses.js';
+import type {
+  BusinessForm,
+  InvestorForm,
+  AttesterIdentity,
+  DetailsKeyPair,
+} from '../../../../contracts/src/witnesses.js';
 import {
   type BrowseMeProviders,
   type BrowseMePrivateState,
   BROWSEME_PRIVATE_STATE_ID,
   AttesterCategory,
 } from './common-types';
-import { map, shareReplay, type Observable } from 'rxjs';
+import { firstValueFrom, map, of, shareReplay, type Observable } from 'rxjs';
+import { decodeText, equalBytes, fromHex, isAllZero, toHex } from './codec';
+import {
+  generateKeyPair,
+  openBusinessDetails,
+  openInvestorDetails,
+  sealBusinessDetails,
+  sealInvestorDetails,
+} from './detailsCrypto';
 
-// Encodes free-text form input into the fixed 32-byte arrays the circuits
-// expect. Truncates rather than throws — validate length in the form
-// itself (RegistrationForm.tsx) so users get a warning before submit,
-// not a silent truncation here.
+// Encodes the coarse, public sector/location arguments into the fixed 32-byte
+// arrays the register circuits expect. Truncates rather than throws;
+// RegistrationForm validates length before submit.
 function toBytes32(input: string): Uint8Array {
   const bytes = new Uint8Array(32);
   bytes.set(new TextEncoder().encode(input).slice(0, 32));
@@ -56,13 +67,6 @@ export interface ListedBusiness {
   status: 'INVESTING' | 'OPEN';
   sector: string;
   location: string;
-}
-
-// Inverse of toBytes32: drops the trailing zero padding and decodes UTF-8.
-function fromBytes32(bytes: Uint8Array): string {
-  let end = bytes.length;
-  while (end > 0 && bytes[end - 1] === 0) end--;
-  return new TextDecoder().decode(bytes.slice(0, end));
 }
 
 // Maps the contract's public `businesses` map to the listed entries only.
@@ -80,8 +84,8 @@ export function listedBusinessesFrom(state$: Observable<any>): Observable<Listed
           track: b.track === 0 ? 'A' : 'B',
           tier: Number(b.tier),
           status: b.status === 0 ? 'INVESTING' : 'OPEN',
-          sector: fromBytes32(b.sector),
-          location: fromBytes32(b.location),
+          sector: decodeText(b.sector),
+          location: decodeText(b.location),
         });
       }
       const rank = (t: number) => (t === 0 ? 99 : t);
@@ -121,9 +125,6 @@ export interface DealsView {
   handshakes: DealHandshake[];
 }
 
-const toHex = (bytes: Uint8Array): string =>
-  Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-
 // Everything the connected wallet is party to, read from public ledger state.
 // `callerAddress` is the same 32 bytes the contract sees via callerAddress().
 export function dealsFrom(state$: Observable<any>, callerAddress: Uint8Array): Observable<DealsView> {
@@ -145,8 +146,8 @@ export function dealsFrom(state$: Observable<any>, callerAddress: Uint8Array): O
           listed: b.listed,
           attestations: view.attestationCounts.member(id) ? Number(view.attestationCounts.lookup(id)) : 0,
           hasUnion: view.hasUnionAttestation.member(id) ? view.hasUnionAttestation.lookup(id) : false,
-          sector: fromBytes32(b.sector),
-          location: fromBytes32(b.location),
+          sector: decodeText(b.sector),
+          location: decodeText(b.location),
         });
       }
       ownedBusinesses.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -166,50 +167,153 @@ export function dealsFrom(state$: Observable<any>, callerAddress: Uint8Array): O
           businessId: hs.businessId,
           role: asInvestor ? 'INVESTOR' : 'OWNER',
           status: hs.unshaken ? 'ENDED' : hs.shaken ? 'SEALED' : 'PENDING',
-          sector: biz ? fromBytes32(biz.sector) : '',
-          location: biz ? fromBytes32(biz.location) : '',
+          sector: biz ? decodeText(biz.sector) : '',
+          location: biz ? decodeText(biz.location) : '',
         });
       }
       const rank = (s: HandshakeStatus) => (s === 'PENDING' ? 0 : s === 'SEALED' ? 1 : 2);
       handshakes.sort((a, b) => rank(a.status) - rank(b.status));
 
       // Compare by hex instead of calling investors.member(callerAddress), the
-      // same way owners and handshakes are matched above. The console line
-      // is temporary debugging: remove it once the Browse button works.
+      // same way owners and handshakes are matched above.
       let isInvestor = false;
-      const investorKeys: string[] = [];
       for (const [key] of view.investors) {
-        const hex = toHex(key);
-        investorKeys.push(hex);
-        if (hex === me) isInvestor = true;
+        if (toHex(key) === me) isInvestor = true;
       }
-      console.log('[dealsFrom] me:', me, 'investors:', investorKeys, 'isInvestor:', isInvestor);
+
+      return { isInvestor, ownedBusinesses, handshakes };
+    }),
+  );
+}
+
+// ── Details view ─────────────────────────────────────────────────────
+
+export interface HandshakeDetailsView {
+  nonce: Uint8Array;
+  nonceHex: string;
+  businessId: bigint;
+  role: 'INVESTOR' | 'OWNER';
+  status: HandshakeStatus;
+  sector: string;
+  location: string;
+  // Have I already delivered my package?
+  myPackageDelivered: boolean;
+  // The other side's encrypted package addressed to me, once delivered.
+  theirPackage: Uint8Array | null;
+  // The other side's encryption public key from the handshake.
+  theirPublicKey: Uint8Array;
+  // The commitment the other side registered on-chain (to verify against).
+  theirCommitment: Uint8Array | null;
+}
+
+export interface DetailField {
+  label: string;
+  value: string;
+}
+
+// What this wallet is about to share, plus a reason it can't (if any).
+export interface DeliveryPreview {
+  role: 'INVESTOR' | 'OWNER';
+  fields: DetailField[];
+  problem: string | null;
+}
+
+export type OpenResult =
+  | { ok: true; fields: DetailField[]; verified: boolean }
+  | { ok: false; reason: string };
+
+// One handshake as seen by one party. Emits null when the handshake doesn't
+// exist or the caller isn't a party to it.
+export function handshakeDetailsFrom(
+  state$: Observable<any>,
+  nonceHex: string,
+  callerAddress: Uint8Array,
+): Observable<HandshakeDetailsView | null> {
+  if (!/^[0-9a-f]{64}$/i.test(nonceHex)) return of(null);
+  const me = toHex(callerAddress);
+  const nonce = fromHex(nonceHex.toLowerCase());
+
+  return state$.pipe(
+    map((contractState): HandshakeDetailsView | null => {
+      const view = BrowseMe.ledger(contractState.data);
+      if (!view.pendingHandshakes.member(nonce)) return null;
+      const hs = view.pendingHandshakes.lookup(nonce);
+
+      const asInvestor = toHex(hs.investorId) === me;
+      const asOwner =
+        view.businessOwners.member(hs.businessId) &&
+        toHex(view.businessOwners.lookup(hs.businessId)) === me;
+      if (!asInvestor && !asOwner) return null;
+
+      const role: 'INVESTOR' | 'OWNER' = asInvestor ? 'INVESTOR' : 'OWNER';
+      const biz = view.businesses.member(hs.businessId) ? view.businesses.lookup(hs.businessId) : null;
+
+      const theirPackages = role === 'INVESTOR' ? view.businessPackages : view.investorPackages;
+      const myPackages = role === 'INVESTOR' ? view.investorPackages : view.businessPackages;
 
       return {
-        isInvestor,
-        ownedBusinesses,
-        handshakes,
+        nonce,
+        nonceHex: toHex(nonce),
+        businessId: hs.businessId,
+        role,
+        status: hs.unshaken ? 'ENDED' : hs.shaken ? 'SEALED' : 'PENDING',
+        sector: biz ? decodeText(biz.sector) : '',
+        location: biz ? decodeText(biz.location) : '',
+        myPackageDelivered: myPackages.member(nonce),
+        theirPackage: theirPackages.member(nonce) ? theirPackages.lookup(nonce) : null,
+        theirPublicKey: role === 'INVESTOR' ? hs.ownerKey : hs.investorKey,
+        theirCommitment:
+          role === 'INVESTOR'
+            ? biz
+              ? biz.commitment
+              : null
+            : view.investors.member(hs.investorId)
+              ? view.investors.lookup(hs.investorId)
+              : null,
       };
     }),
   );
 }
 
+const businessFields = (f: BusinessForm): DetailField[] => [
+  { label: 'Business name', value: decodeText(f.name) },
+  { label: 'What it does', value: decodeText(f.description) },
+  { label: 'Contact', value: decodeText(f.contactInfo) },
+  { label: 'Sector', value: decodeText(f.sector) },
+  { label: 'Location', value: decodeText(f.location) },
+];
+
+const investorFields = (f: InvestorForm): DetailField[] => [
+  { label: 'Name', value: decodeText(f.name) },
+  { label: 'Region', value: decodeText(f.region) },
+  { label: 'Business ID', value: decodeText(f.businessId) },
+  { label: 'Tax ID', value: decodeText(f.taxId) },
+];
+
+const OLD_REGISTRATION_PROBLEM =
+  'The details stored in this browser predate verifiable commitments. Register again to share them.';
+const MISMATCH_PROBLEM =
+  'The details stored in this browser don’t match what this wallet committed on-chain. This happens when another registration from this wallet replaced them, or when browser storage was cleared.';
+const KEY_PROBLEM =
+  'The encryption key for this handshake isn’t in this browser, so the other side could not decrypt a package from you.';
+
+interface MineResolved {
+  role: 'INVESTOR' | 'OWNER';
+  sealed: boolean;
+  fields: DetailField[];
+  problem: string | null;
+  theirPublicKey: Uint8Array;
+  privateState: BrowseMePrivateState;
+}
+
 // Type alias keeps make()'s generic argument short. Passing the REAL typed
 // constructor (BrowseMe.Contract<BrowseMePrivateState>) here — not
-// `(BrowseMe as any).Contract` — is what lets TS infer C correctly; an
-// `any`-typed second argument is what collapsed withWitnesses' parameter
-// type to `never` in the last build.
+// `(BrowseMe as any).Contract` — is what lets TS infer C correctly.
 type BrowseMeContract = BrowseMe.Contract<BrowseMePrivateState>;
 
 // withCompiledFileAssets(...) is NOT optional: deployContract's/
 // findDeployedContract's overloads require the compiled contract's assets
-// slot to be `never`, which only happens once this is attached. Skipping
-// it is what caused deployContract's overloads to fall apart (rejecting
-// privateStateId on one, demanding an `args` field on the other).
-//
-// Path mirrors the relative-path pattern the imports above already use
-// (four levels up to contracts/managed/browseme) — verify against
-// contracts/src/deploy.ts's `zkArtifactsDir` if this doesn't resolve.
+// slot to be `never`, which only happens once this is attached.
 const browseMeContractInstance = CompiledContract.make<BrowseMeContract>(
   'browseme',
   BrowseMe.Contract<BrowseMePrivateState>,
@@ -232,11 +336,7 @@ export class ContractAPI {
 
     // One shared indexer subscription for the whole app, replaying the latest
     // contract state to every new subscriber. refCount is deliberately left
-    // off: with refCount the cache resets whenever the subscriber count hits
-    // zero (which is exactly what a StrictMode remount does), and the new
-    // subscriber would wait for the indexer again. The subscription lives as
-    // long as this ContractAPI instance; connect()/disconnect() create a new
-    // instance, so the old one is garbage-collected with it.
+    // off so a StrictMode remount doesn't reset the cache.
     this.state$ = this.providers.publicDataProvider
       .contractStateObservable(this.contractAddress, { type: 'latest' })
       .pipe(shareReplay({ bufferSize: 1, refCount: false }));
@@ -244,10 +344,7 @@ export class ContractAPI {
 
   /**
    * Deploys a fresh instance. Use once, then persist the resulting address.
-   * No `args` field: BrowseMe's constructor takes no arguments, and once
-   * that's true, `args` must be omitted entirely rather than passed as
-   * `[]` — passing it (even empty) is what triggered the second build
-   * error.
+   * No `args` field: BrowseMe's constructor takes no arguments.
    */
   static async deploy(providers: BrowseMeProviders, initialPrivateState: BrowseMePrivateState): Promise<ContractAPI> {
     const deployed = await deployContract(providers, {
@@ -258,123 +355,261 @@ export class ContractAPI {
     return new ContractAPI(deployed, providers);
   }
 
-  /** Joins an already-deployed contract by address (the common frontend path). */
+  /**
+   * Joins an already-deployed contract by address (the common frontend path).
+   *
+   * Only `callerAddress` is read from the caller's initial state. Anything
+   * already stored in this browser (registered forms, the commitment
+   * randomness, the details keypair) is kept and merged over fresh defaults,
+   * so reconnecting never wipes it, whichever way findDeployedContract treats
+   * existing state.
+   */
   static async join(
     providers: BrowseMeProviders,
     contractAddress: string,
-    initialPrivateState: BrowseMePrivateState,
+    initialPrivateState: Pick<BrowseMePrivateState, 'callerAddress'>,
   ): Promise<ContractAPI> {
+    const callerAddress = initialPrivateState.callerAddress;
+    providers.privateStateProvider.setContractAddress(contractAddress);
+    const existing = await providers.privateStateProvider.get(BROWSEME_PRIVATE_STATE_ID);
+    const base = emptyPrivateState(callerAddress);
+    const privateState: BrowseMePrivateState = existing ? { ...base, ...existing, callerAddress } : base;
+
     const deployed = await findDeployedContract(providers, {
       contractAddress,
       compiledContract: browseMeContractInstance,
       privateStateId: BROWSEME_PRIVATE_STATE_ID,
-      initialPrivateState,
+      initialPrivateState: privateState,
     });
     return new ContractAPI(deployed, providers);
   }
 
-  // ── Private state updates ────────────────────────────────────────────
-  // Circuits now read form data via witness rather than as call arguments,
-  // so the relevant field must be staged in private state before calling
-  // the matching registration/attestation circuit. Each method reads the
-  // current private state, merges in the new value, and writes it back.
-  // Call immediately before the matching circuit call — not meant to
-  // persist across unrelated calls.
+  // ── Private state ────────────────────────────────────────────────────
 
-  async setInvestorForm(form: InvestorForm): Promise<void> {
-    const current = await this.providers.privateStateProvider.get(BROWSEME_PRIVATE_STATE_ID);
-    if (!current) throw new Error('No private state found — join the contract before registering.');
-    await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, {
-      ...current,
-      investorForm: form,
-    });
-  }
-
-  /** The caller address bytes staged in private state when the wallet connected. */
-  async getCallerAddress(): Promise<Uint8Array> {
+  private async getPrivateState(): Promise<BrowseMePrivateState> {
     const current = await this.providers.privateStateProvider.get(BROWSEME_PRIVATE_STATE_ID);
     if (!current) throw new Error('No private state found — join the contract first.');
-    return current.callerAddress;
+    // Normalise state written by older versions of the app.
+    return { ...emptyPrivateState(current.callerAddress), ...current };
+  }
+
+  // Circuits read form data via witness rather than as call arguments, so the
+  // relevant form must be staged in private state before calling the matching
+  // registration/attestation circuit. Call immediately before that circuit.
+
+  async setInvestorForm(form: InvestorForm): Promise<void> {
+    const current = await this.getPrivateState();
+    await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, { ...current, investorForm: form });
   }
 
   async setBusinessForm(form: BusinessForm): Promise<void> {
-    const current = await this.providers.privateStateProvider.get(BROWSEME_PRIVATE_STATE_ID);
-    if (!current) throw new Error('No private state found — join the contract before registering.');
-    await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, {
-      ...current,
-      businessForm: form,
-    });
+    const current = await this.getPrivateState();
+    await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, { ...current, businessForm: form });
   }
 
   async setAttesterIdentity(identity: AttesterIdentity): Promise<void> {
-    const current = await this.providers.privateStateProvider.get(BROWSEME_PRIVATE_STATE_ID);
-    if (!current) throw new Error('No private state found — join the contract before registering.');
+    const current = await this.getPrivateState();
     await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, {
       ...current,
       attesterIdentity: identity,
     });
   }
 
-  // ── Impure circuits (submit a transaction) ──────────────────────────
-  // Signatures below are copied 1:1 from the `export circuit` declarations
-  // in main.compact — argument count and order matter for callTx.
+  /** The caller address bytes staged in private state when the wallet connected. */
+  async getCallerAddress(): Promise<Uint8Array> {
+    return (await this.getPrivateState()).callerAddress;
+  }
 
-  /**
-   * main.compact: registerInvestor(): Bytes<32>
-   * Call setInvestorForm() first — the commitment is computed in-circuit
-   * from privateState.investorForm + a fresh witness-generated rand.
-   */
+  // The encryption keypair used to exchange details. Created on first use and
+  // kept in this browser's private state; only the public half goes on-chain.
+  private async ensureDetailsKeyPair(): Promise<DetailsKeyPair> {
+    const current = await this.getPrivateState();
+    if (current.detailsKeyPair) return current.detailsKeyPair;
+    const detailsKeyPair = generateKeyPair();
+    await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, { ...current, detailsKeyPair });
+    return detailsKeyPair;
+  }
+
+  // ── Impure circuits (submit a transaction) ──────────────────────────
+  // Signatures are copied 1:1 from the `export circuit` declarations in
+  // main.compact — argument count and order matter for callTx.
+
+  /** main.compact: registerInvestor(): Bytes<32>. Call setInvestorForm() first. */
   async registerInvestor() {
     return this.deployedContract.callTx.registerInvestor();
   }
 
-  /**
-   * main.compact: registerBusinessTrackA(sector, location): Uint<64>
-   * Call setBusinessForm() first — the commitment is computed in-circuit
-   * from privateState.businessForm + a fresh witness-generated rand.
-   */
+  /** main.compact: registerBusinessTrackA(sector, location): Uint<64>. Call setBusinessForm() first. */
   async registerBusinessTrackA(sector: string, location: string) {
-    return this.deployedContract.callTx.registerBusinessTrackA(
-      toBytes32(sector),
-      toBytes32(location),
-    );
+    return this.deployedContract.callTx.registerBusinessTrackA(toBytes32(sector), toBytes32(location));
   }
 
-  /**
-   * main.compact: registerBusinessTrackB(sector, location): Uint<64>
-   * Call setBusinessForm() first — the commitment is computed in-circuit
-   * from privateState.businessForm + a fresh witness-generated rand.
-   */
+  /** main.compact: registerBusinessTrackB(sector, location): Uint<64>. Call setBusinessForm() first. */
   async registerBusinessTrackB(sector: string, location: string) {
-    return this.deployedContract.callTx.registerBusinessTrackB(
-      toBytes32(sector),
-      toBytes32(location),
-    );
+    return this.deployedContract.callTx.registerBusinessTrackB(toBytes32(sector), toBytes32(location));
   }
 
-  /**
-   * main.compact: submitAttestation(businessId: Uint<64>, attesterType: AttesterType): []
-   * attesterType is main.compact's AttesterType enum (COMMUNITY, RELIGIOUS,
-   * UNION, EDUCATION) — see common-types.ts AttesterCategory. Call
-   * setAttesterIdentity() first — the commitment is computed in-circuit
-   * from privateState.attesterIdentity + a fresh witness-generated rand.
-   */
+  /** main.compact: submitAttestation(businessId, attesterType). Call setAttesterIdentity() first. */
   async submitAttestation(businessId: bigint, attesterType: AttesterCategory) {
     return this.deployedContract.callTx.submitAttestation(businessId, attesterType);
   }
 
-  /** main.compact: initiateHandshake(nonce: Bytes<32>, businessId: Uint<64>): [] */
+  /**
+   * main.compact: initiateHandshake(nonce, businessId, investorKey).
+   * The investor's encryption public key is generated here if needed.
+   */
   async initiateHandshake(nonce: Uint8Array, businessId: bigint) {
-    return this.deployedContract.callTx.initiateHandshake(nonce, businessId);
+    const keyPair = await this.ensureDetailsKeyPair();
+    return this.deployedContract.callTx.initiateHandshake(nonce, businessId, keyPair.publicKey);
   }
 
-  /** main.compact: shake(nonce: Bytes<32>): [] */
+  /**
+   * main.compact: shake(nonce, ownerKey).
+   * The owner's encryption public key is generated here if needed.
+   */
   async shake(nonce: Uint8Array) {
-    return this.deployedContract.callTx.shake(nonce);
+    const keyPair = await this.ensureDetailsKeyPair();
+    return this.deployedContract.callTx.shake(nonce, keyPair.publicKey);
   }
 
   /** main.compact: unshake(nonce: Bytes<32>): [] */
   async unshake(nonce: Uint8Array) {
     return this.deployedContract.callTx.unshake(nonce);
+  }
+
+  // ── Details sharing ──────────────────────────────────────────────────
+
+  // Reads everything needed to decide whether (and what) this wallet can
+  // deliver for a handshake, and why not if it can't.
+  private async resolveMine(nonce: Uint8Array): Promise<MineResolved> {
+    const contractState = await firstValueFrom(this.state$);
+    const privateState = await this.getPrivateState();
+    const view = BrowseMe.ledger(contractState.data);
+
+    if (!view.pendingHandshakes.member(nonce)) throw new Error('This handshake does not exist on the ledger.');
+    const hs = view.pendingHandshakes.lookup(nonce);
+
+    const me = toHex(privateState.callerAddress);
+    const isInvestor = toHex(hs.investorId) === me;
+    const isOwner =
+      view.businessOwners.member(hs.businessId) && toHex(view.businessOwners.lookup(hs.businessId)) === me;
+    if (!isInvestor && !isOwner) throw new Error('This wallet is not a party to this handshake.');
+
+    const role: 'INVESTOR' | 'OWNER' = isInvestor ? 'INVESTOR' : 'OWNER';
+    const myPublishedKey = role === 'INVESTOR' ? hs.investorKey : hs.ownerKey;
+    const theirPublicKey = role === 'INVESTOR' ? hs.ownerKey : hs.investorKey;
+
+    const onChainCommitment =
+      role === 'INVESTOR'
+        ? view.investors.member(hs.investorId)
+          ? view.investors.lookup(hs.investorId)
+          : null
+        : view.businesses.member(hs.businessId)
+          ? view.businesses.lookup(hs.businessId).commitment
+          : null;
+
+    const rand = role === 'INVESTOR' ? privateState.investorFormRand : privateState.businessFormRand;
+    let fields: DetailField[] = [];
+    let problem: string | null = null;
+
+    try {
+      const local =
+        role === 'INVESTOR'
+          ? BrowseMe.pureCircuits.investorCommitmentOf(privateState.investorForm, rand)
+          : BrowseMe.pureCircuits.businessCommitmentOf(privateState.businessForm, rand);
+      fields =
+        role === 'INVESTOR' ? investorFields(privateState.investorForm) : businessFields(privateState.businessForm);
+      if (isAllZero(rand)) problem = OLD_REGISTRATION_PROBLEM;
+      else if (!onChainCommitment || !equalBytes(local, onChainCommitment)) problem = MISMATCH_PROBLEM;
+    } catch {
+      // Forms stored by an older version have the wrong sizes for the new contract.
+      problem = OLD_REGISTRATION_PROBLEM;
+    }
+
+    if (!problem) {
+      const keyPair = privateState.detailsKeyPair;
+      if (!keyPair || !equalBytes(keyPair.publicKey, myPublishedKey)) problem = KEY_PROBLEM;
+    }
+
+    return { role, sealed: hs.shaken && !hs.unshaken, fields, problem, theirPublicKey, privateState };
+  }
+
+  /** What this wallet would share for a handshake, and any reason it can't. */
+  async getDeliveryPreview(nonce: Uint8Array): Promise<DeliveryPreview> {
+    const mine = await this.resolveMine(nonce);
+    return { role: mine.role, fields: mine.fields, problem: mine.problem };
+  }
+
+  /**
+   * Encrypts this wallet's registered details to the other party's key and
+   * stores the package on-chain (deliverInvestorDetails / deliverBusinessDetails).
+   * Refuses unless the stored details still match the on-chain commitment.
+   */
+  async deliverMyDetails(nonce: Uint8Array) {
+    const mine = await this.resolveMine(nonce);
+    if (!mine.sealed) throw new Error('The handshake is not sealed yet.');
+    if (mine.problem) throw new Error(mine.problem);
+
+    const keyPair = mine.privateState.detailsKeyPair!;
+    if (mine.role === 'INVESTOR') {
+      const pkg = sealInvestorDetails(
+        mine.privateState.investorForm,
+        mine.privateState.investorFormRand,
+        mine.theirPublicKey,
+        keyPair.secretKey,
+      );
+      return this.deployedContract.callTx.deliverInvestorDetails(nonce, pkg);
+    }
+    const pkg = sealBusinessDetails(
+      mine.privateState.businessForm,
+      mine.privateState.businessFormRand,
+      mine.theirPublicKey,
+      keyPair.secretKey,
+    );
+    return this.deployedContract.callTx.deliverBusinessDetails(nonce, pkg);
+  }
+
+  /**
+   * Decrypts the package the other party delivered and checks it against the
+   * commitment they registered on-chain.
+   */
+  async openCounterpartyDetails(view: HandshakeDetailsView): Promise<OpenResult> {
+    if (!view.theirPackage) return { ok: false, reason: 'They have not shared their details yet.' };
+
+    const keyPair = (await this.getPrivateState()).detailsKeyPair;
+    if (!keyPair) {
+      return { ok: false, reason: 'This browser has no encryption key for your handshakes.' };
+    }
+
+    const cannotDecrypt: OpenResult = {
+      ok: false,
+      reason: 'Could not decrypt their package. It may not be addressed to the key stored in this browser.',
+    };
+
+    if (view.role === 'INVESTOR') {
+      // I'm the investor: the package is the business's details.
+      const opened = openBusinessDetails(view.theirPackage, view.theirPublicKey, keyPair.secretKey);
+      if (!opened) return cannotDecrypt;
+      let verified = false;
+      try {
+        const commitment = BrowseMe.pureCircuits.businessCommitmentOf(opened.form, opened.rand);
+        verified = view.theirCommitment !== null && equalBytes(commitment, view.theirCommitment);
+      } catch {
+        verified = false;
+      }
+      return { ok: true, verified, fields: businessFields(opened.form) };
+    }
+
+    // I'm the business owner: the package is the investor's details.
+    const opened = openInvestorDetails(view.theirPackage, view.theirPublicKey, keyPair.secretKey);
+    if (!opened) return cannotDecrypt;
+    let verified = false;
+    try {
+      const commitment = BrowseMe.pureCircuits.investorCommitmentOf(opened.form, opened.rand);
+      verified = view.theirCommitment !== null && equalBytes(commitment, view.theirCommitment);
+    } catch {
+      verified = false;
+    }
+    return { ok: true, verified, fields: investorFields(opened.form) };
   }
 }

@@ -7,6 +7,7 @@ import RegisterBusinessPage from './pages/RegisterBusinessPage';
 import RegisterInvestorPage from './pages/RegisterInvestorPage';
 import ListedBusinessesPage from './pages/ListedBusinessesPage';
 import DealsPage from './pages/DealsPage';
+import DetailsPage from './pages/DetailsPage';
 
 // Constrained layout for every page except the home page
 const PageLayout = () => (
@@ -26,6 +27,7 @@ const App = () => (
         <Route element={<PageLayout />}>
           <Route path="/businesses" element={<ListedBusinessesPage />} />
           <Route path="/deals" element={<DealsPage />} />
+          <Route path="/deals/:nonce" element={<DetailsPage />} />
           <Route path="/wallet" element={<WalletPage />} />
           <Route path="/register-business" element={<RegisterBusinessPage />} />
           <Route path="/register-investor" element={<RegisterInvestorPage />} />

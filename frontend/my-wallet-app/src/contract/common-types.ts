@@ -5,15 +5,10 @@
 // import the type definitions without pulling in the full API class.
 
 import type { MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
-import type {
-  BusinessForm,
-  InvestorForm,
-  AttesterIdentity,
-} from '../../../../contracts/src/witnesses.js';
+import type { BrowseMePrivateState as ContractPrivateState } from '../../../../contracts/src/witnesses.js';
 
 // All impure circuits exposed by main.compact. Add to this list if you
-// export more circuits from the contract — TypeScript will then force
-// ContractAPI to implement them (see the exhaustiveness note below).
+// export more circuits from the contract.
 export type BrowseMeCircuits =
   | 'registerInvestor'
   | 'registerBusinessTrackA'
@@ -21,15 +16,13 @@ export type BrowseMeCircuits =
   | 'submitAttestation'
   | 'initiateHandshake'
   | 'shake'
+  | 'deliverInvestorDetails'
+  | 'deliverBusinessDetails'
   | 'unshake';
 
-// Mirrors contracts/src/witnesses.ts exactly (v0.2 — commitments fixed).
-export type BrowseMePrivateState = {
-  callerAddress: Uint8Array; // Bytes<32> — see providers.ts callerAddressBytesFromWallet()
-  businessForm: BusinessForm;
-  investorForm: InvestorForm;
-  attesterIdentity: AttesterIdentity;
-};
+// Single source of truth lives in contracts/src/witnesses.ts (v0.3: adds the
+// saved commitment randomness and the details keypair).
+export type BrowseMePrivateState = ContractPrivateState;
 
 export const BROWSEME_PRIVATE_STATE_ID = 'browsemePrivateState';
 
@@ -48,13 +41,9 @@ export const AttesterCategory = {
 } as const;
 export type AttesterCategory = (typeof AttesterCategory)[keyof typeof AttesterCategory];
 
-// NOT present in main.compact — this was a frontend-only role tag, previously
+// NOT present in main.compact — a frontend-only role tag, previously
 // misnamed AttesterType, which collided with the contract's real
-// AttesterType enum above. Rename usages of the old AttesterType.Investor /
-// .BusinessTrackA / .BusinessTrackB / .ThirdParty to AttesterRole.* if this
-// distinguishes UI flows (e.g. which registration form is showing) rather
-// than anything sent to the contract. If nothing in the frontend actually
-// reads this anymore, it's safe to delete.
+// AttesterType enum above. Safe to delete if nothing reads it.
 export const AttesterRole = {
   Investor: 0,
   BusinessTrackA: 1,

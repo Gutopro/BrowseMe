@@ -3,25 +3,27 @@ pragma language_version >= 0.22;
 import CompactStandardLibrary;
 
 // ============================================================
-// BrowseMe — core contract (v0.2 — commitments fixed)
+// BrowseMe — core contract (v0.3 — details sharing)
 // Implements: §8.1 ledger state, §8.2 structs, §8.3 circuit
 // boundaries, and the security notes in §9.
 //
-// CHANGES FROM v0.1:
-// - businessCommitment and investorCommitment
-//   were previously accepted as pre-hashed Bytes<32> arguments and
-//   trusted verbatim. Nothing tied them to real private data, so a
-//   caller could submit an arbitrary 32 bytes as a "commitment."
-// - Each is now computed IN-CIRCUIT from a witness-supplied private
-//   struct + a fresh random nonce, using persistentCommit. This
-//   binds the on-chain commitment to real data and prevents
-//   brute-force guessing of low-entropy forms.
-// - Attestations no longer use a commitment. The duplicate-attester
-//   nullifier is derived from a deterministic hash of the attester's
-//   private identity (see submitAttestation).
-// - Placeholder struct fields below (BusinessForm, InvestorForm,
-//   AttesterIdentity) need to match your actual private data
-//   schema — adjust field names/types accordingly.
+// CHANGES FROM v0.2:
+// - Handshakes now carry an encryption public key for each party
+//   (investorKey set at initiateHandshake, ownerKey set at shake).
+// - After a handshake is SEALED, each party can deliver their private
+//   details to the other as an encrypted package stored on-chain
+//   (deliverInvestorDetails / deliverBusinessDetails). The contract
+//   never sees plaintext: packages are opaque bytes encrypted in the
+//   client to the counterparty's public key.
+// - Package contents include the commitment randomness, so the receiver
+//   can recompute the commitment (businessCommitmentOf /
+//   investorCommitmentOf, exported pure circuits) and compare it with
+//   the one registered on-chain.
+// - unshake removes both packages from current ledger state.
+// - investorDataStaged removed: nothing was ever staged, so the flag
+//   only misled readers.
+// - BusinessForm.description widened to Bytes<128> and contactInfo to
+//   Bytes<64> so the details shared after a handshake are usable.
 // ============================================================
 
 // ---- Enums ----
@@ -45,23 +47,23 @@ struct BusinessListing {
 struct HandshakeState {
   investorId: Bytes<32>,
   businessId: Uint<64>,
-  investorDataStaged: Boolean,
   shaken: Boolean,
-  unshaken: Boolean
+  unshaken: Boolean,
+  investorKey: Bytes<32>, // investor's encryption public key, set at initiate
+  ownerKey: Bytes<32>     // owner's encryption public key, set at shake (zeros until then)
 }
 
-// PLACEHOLDER — align with your actual private BusinessForm schema.
 // Everything a business would rather not put on-chain in the clear.
-struct BusinessForm {
+// Exported because the exported pure circuit below takes it as a parameter.
+export struct BusinessForm {
   name: Bytes<32>,
-  description: Bytes<32>,
-  contactInfo: Bytes<32>,
+  description: Bytes<128>,
+  contactInfo: Bytes<64>,
   sector: Bytes<32>,
   location: Bytes<32>
 }
 
-// PLACEHOLDER — align with your actual private investor data schema.
-struct InvestorForm {
+export struct InvestorForm {
   name: Bytes<32>,
   region: Bytes<32>,
   businessId: Bytes<32>,
@@ -75,14 +77,11 @@ struct AttesterIdentity {
 
 // ---- Witnesses ----
 
-witness callerAddress(): Bytes<32>;         // caller's wallet-derived address, supplied by the DApp
-
-witness businessFormData(): BusinessForm;   // private business form, supplied by the DApp
-witness businessFormRand(): Bytes<32>;      // fresh randomness for the business commitment
-
-witness investorFormData(): InvestorForm;   // private investor form, supplied by the DApp
-witness investorFormRand(): Bytes<32>;      // fresh randomness for the investor commitment
-
+witness callerAddress(): Bytes<32>;               // caller's wallet-derived address, supplied by the DApp
+witness businessFormData(): BusinessForm;         // private business form, supplied by the DApp
+witness businessFormRand(): Bytes<32>;            // fresh randomness for the business commitment (saved client-side)
+witness investorFormData(): InvestorForm;         // private investor form, supplied by the DApp
+witness investorFormRand(): Bytes<32>;            // fresh randomness for the investor commitment (saved client-side)
 witness attesterIdentityData(): AttesterIdentity; // private attester identity, supplied by the DApp
 
 // ---- Public ledger state (§8.1) ----
@@ -96,17 +95,35 @@ export ledger hasUnionAttestation: Map<Uint<64>, Boolean>;   // enforces §9.3 u
 export ledger attestationNullifiers: Set<Bytes<32>>;         // prevents duplicate attestations (§9.3)
 export ledger pendingHandshakes: Map<Bytes<32>, HandshakeState>; // keyed by nonce (§9.4: single-use)
 
+// Encrypted detail packages, keyed by handshake nonce. Layout (built and
+// parsed in the client): [24-byte nonce][NaCl box ciphertext], zero-padded.
+// The chain stores them but cannot read them.
+export ledger investorPackages: Map<Bytes<32>, Bytes<256>>;  // investor -> business
+export ledger businessPackages: Map<Bytes<32>, Bytes<384>>;  // business -> investor
+
 constructor() {
   nextBusinessId = 1;
 }
 
 // ============================================================
-// Investor registration
+// Commitment helpers (client-side verification)
 // ============================================================
 //
-// FIXED: investorCommitment used to be a caller-supplied Bytes<32>,
-// never checked against any real data. Now the private form comes
-// in via witness and the commitment is computed here.
+// Same persistentCommit the registration circuits use, exposed as pure
+// circuits so a receiving browser can recompute a commitment from the
+// form + randomness it decrypted and compare it with the on-chain value.
+
+export pure circuit businessCommitmentOf(form: BusinessForm, rand: Bytes<32>): Bytes<32> {
+  return persistentCommit<BusinessForm>(form, rand);
+}
+
+export pure circuit investorCommitmentOf(form: InvestorForm, rand: Bytes<32>): Bytes<32> {
+  return persistentCommit<InvestorForm>(form, rand);
+}
+
+// ============================================================
+// Investor registration
+// ============================================================
 
 export circuit registerInvestor(): Bytes<32> {
   const caller = disclose(callerAddress());
@@ -124,12 +141,6 @@ export circuit registerInvestor(): Bytes<32> {
 // ============================================================
 // Business registration — Track A (§4.1)
 // ============================================================
-//
-// FIXED: businessCommitment used to be a caller-supplied Bytes<32>,
-// never checked against any real data. Now the private form comes
-// in via witness and the commitment is computed here. sector/
-// location remain public arguments since they're intentionally
-// coarse/promoted fields (§6), not part of the hidden form.
 
 export circuit registerBusinessTrackA(
   sector: Bytes<32>,
@@ -161,9 +172,6 @@ export circuit registerBusinessTrackA(
 // ============================================================
 // Business registration — Track B (§4.2)
 // ============================================================
-//
-// FIXED: same as Track A — commitment is now derived in-circuit
-// from a witness-supplied form instead of trusted as a raw argument.
 
 export circuit registerBusinessTrackB(
   sector: Bytes<32>,
@@ -197,14 +205,6 @@ export circuit registerBusinessTrackB(
 // ============================================================
 // Attestations (§4.2, §9.3, §10.2)
 // ============================================================
-//
-// FIXED: the attester used to be a caller-supplied Bytes<32> that was
-// never tied to a real identity, so anyone could invent fresh values and
-// vouch repeatedly, defeating the nullifier. Now the nullifier is derived
-// from a hash of the witness-supplied private identity. The hash is
-// deterministic, so the same attester always yields the same nullifier
-// for a given business. Random commitments cannot be used for this,
-// since fresh randomness would make every call look like a new attester.
 
 export circuit submitAttestation(
   businessId: Uint<64>,
@@ -276,9 +276,16 @@ pure circuit attestationNullifier(attesterKey: Bytes<32>, businessId: Uint<64>):
 // Handshake protocol (§7, §8.3, §9.4)
 // ============================================================
 
-export circuit initiateHandshake(nonce: Bytes<32>, businessId: Uint<64>): [] {
+// investorKey is the investor's encryption public key. The business
+// encrypts its details to it once the handshake is sealed.
+export circuit initiateHandshake(
+  nonce: Bytes<32>,
+  businessId: Uint<64>,
+  investorKey: Bytes<32>
+): [] {
   const n = disclose(nonce);
   const id = disclose(businessId);
+  const key = disclose(investorKey);
   const investor = disclose(callerAddress());
 
   assert(!pendingHandshakes.member(n), "nonce already used");
@@ -289,19 +296,22 @@ export circuit initiateHandshake(nonce: Bytes<32>, businessId: Uint<64>): [] {
   pendingHandshakes.insert(n, HandshakeState {
     investorId: investor,       // derived from caller, not passed in — prevents impersonation
     businessId: id,
-    investorDataStaged: true,   // investor data copied out of private state and staged, not yet delivered (§7.1)
     shaken: false,
-    unshaken: false
+    unshaken: false,
+    investorKey: key,
+    ownerKey: default<Bytes<32>>
   });
 }
 
-export circuit shake(nonce: Bytes<32>): [] {
+// ownerKey is the business owner's encryption public key. The investor
+// encrypts their details to it once the handshake is sealed.
+export circuit shake(nonce: Bytes<32>, ownerKey: Bytes<32>): [] {
   const n = disclose(nonce);
+  const key = disclose(ownerKey);
   assert(pendingHandshakes.member(n), "no such handshake");
 
   const hs = pendingHandshakes.lookup(n);
   assert(!hs.shaken && !hs.unshaken, "handshake already resolved");
-  assert(hs.investorDataStaged, "investor data was never staged");
 
   const caller = disclose(callerAddress());
   assert(businessOwners.lookup(hs.businessId) == caller, "only the business owner can shake");
@@ -309,14 +319,49 @@ export circuit shake(nonce: Bytes<32>): [] {
   pendingHandshakes.insert(n, HandshakeState {
     investorId: hs.investorId,
     businessId: hs.businessId,
-    investorDataStaged: hs.investorDataStaged,
     shaken: true,
-    unshaken: false
+    unshaken: false,
+    investorKey: hs.investorKey,
+    ownerKey: key
   });
-  // Symmetric delivery of investor data -> business and business data ->
-  // investor (§7.2) happens off-chain, driven by the DApp/witness layer
-  // once it observes `shaken == true`. The ledger only records that both
-  // parties are now mutually entitled to each other's data.
+  // Detail delivery happens through deliverInvestorDetails /
+  // deliverBusinessDetails once the handshake is sealed.
+}
+
+// ============================================================
+// Detail delivery (after a sealed handshake)
+// ============================================================
+
+// details = encrypted package built in the client (see ledger comment).
+// The contract only checks who is calling and that the handshake is sealed.
+export circuit deliverInvestorDetails(nonce: Bytes<32>, details: Bytes<256>): [] {
+  const n = disclose(nonce);
+  assert(pendingHandshakes.member(n), "no such handshake");
+
+  const hs = pendingHandshakes.lookup(n);
+  assert(hs.shaken, "handshake is not sealed");
+  assert(!hs.unshaken, "handshake was ended");
+
+  const caller = disclose(callerAddress());
+  assert(caller == hs.investorId, "only the investor can deliver investor details");
+  assert(!investorPackages.member(n), "investor details already delivered");
+
+  investorPackages.insert(n, disclose(details));
+}
+
+export circuit deliverBusinessDetails(nonce: Bytes<32>, details: Bytes<384>): [] {
+  const n = disclose(nonce);
+  assert(pendingHandshakes.member(n), "no such handshake");
+
+  const hs = pendingHandshakes.lookup(n);
+  assert(hs.shaken, "handshake is not sealed");
+  assert(!hs.unshaken, "handshake was ended");
+
+  const caller = disclose(callerAddress());
+  assert(businessOwners.lookup(hs.businessId) == caller, "only the business owner can deliver business details");
+  assert(!businessPackages.member(n), "business details already delivered");
+
+  businessPackages.insert(n, disclose(details));
 }
 
 export circuit unshake(nonce: Bytes<32>): [] {
@@ -334,12 +379,20 @@ export circuit unshake(nonce: Bytes<32>): [] {
   pendingHandshakes.insert(n, HandshakeState {
     investorId: hs.investorId,
     businessId: hs.businessId,
-    investorDataStaged: false,
     shaken: false,
-    unshaken: true
+    unshaken: true,
+    investorKey: hs.investorKey,
+    ownerKey: hs.ownerKey
   });
+
   // Callable unilaterally by either party at any point, before or after
   // Shake (§7.1, §9.4/§9.5) — no counterparty cooperation required.
-  // Clearing the flags is the on-chain signal for the off-chain layer to
-  // destroy any staged or exchanged data tied to this nonce.
+  // Delivered packages are removed from current ledger state. They remain
+  // in chain history, so this limits access going forward; it is not erasure.
+  if (investorPackages.member(n)) {
+    investorPackages.remove(n);
+  }
+  if (businessPackages.member(n)) {
+    businessPackages.remove(n);
+  }
 }

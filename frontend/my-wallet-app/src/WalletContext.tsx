@@ -4,7 +4,6 @@ import type { ConnectedAPI } from '@midnight-ntwrk/dapp-connector-api';
 import { selectWallet } from './selectWallet';
 import { ContractAPI } from './contract/ContractAPI';
 import { initializeProviders, callerAddressBytesFromWallet } from './providers';
-import type { BusinessForm, InvestorForm, AttesterIdentity } from '../../../contracts/src/witnesses';
 
 const CONTRACT_ADDRESS = import.meta.env.VITE_BROWSEME_CONTRACT_ADDRESS as string;
 
@@ -18,20 +17,6 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 function isSyncingError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /syncing|sync to finish/i.test(message);
-}
-
-const emptyBytes32 = () => new Uint8Array(32);
-
-function buildInitialPrivateState(callerAddress: Uint8Array) {
-  const emptyBusinessForm: BusinessForm = {
-    name: emptyBytes32(), description: emptyBytes32(), contactInfo: emptyBytes32(),
-    sector: emptyBytes32(), location: emptyBytes32(),
-  };
-  const emptyInvestorForm: InvestorForm = {
-    name: emptyBytes32(), region: emptyBytes32(), businessId: emptyBytes32(), taxId: emptyBytes32(),
-  };
-  const emptyAttesterIdentity: AttesterIdentity = { identitySecret: emptyBytes32() };
-  return { callerAddress, businessForm: emptyBusinessForm, investorForm: emptyInvestorForm, attesterIdentity: emptyAttesterIdentity };
 }
 
 export function isLikelySessionExpiry(error: unknown): boolean {
@@ -111,8 +96,9 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         const providers = await initializeProviders(connectedApiRef.current!);
         const callerAddress = await callerAddressBytesFromWallet(connectedApiRef.current!);
-        const initialPrivateState = buildInitialPrivateState(callerAddress);
-        const api = await ContractAPI.join(providers, CONTRACT_ADDRESS, initialPrivateState);
+        // join() reads only callerAddress; it builds the rest of the private
+        // state itself and keeps anything already saved in this browser.
+        const api = await ContractAPI.join(providers, CONTRACT_ADDRESS, { callerAddress });
         setContractAPI(api);
       } catch (error) {
         console.error('Contract join failed:', error);

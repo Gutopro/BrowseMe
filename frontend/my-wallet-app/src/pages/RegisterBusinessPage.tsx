@@ -1,15 +1,9 @@
+// Goes to: frontend/my-wallet-app/src/pages/RegisterBusinessPage.tsx
 import { useState } from 'react';
 import RegistrationForm from '../RegistrationForm';
 import type { RegistrationPayload } from '../RegistrationForm';
-import type { BusinessForm } from '../../../../contracts/src/witnesses';
 import { useWallet, isLikelySessionExpiry } from '../WalletContext';
-
-function toBytes32(input: string): Uint8Array {
-  const bytes = new Uint8Array(32);
-  bytes.set(new TextEncoder().encode(input).slice(0, 32));
-  return bytes;
-}
-const emptyBytes32 = () => new Uint8Array(32);
+import { encodeBusinessForm } from '../contract/codec';
 
 export default function RegisterBusinessPage() {
   const { contractAPI } = useWallet();
@@ -22,16 +16,20 @@ export default function RegisterBusinessPage() {
       setError(message);
       throw new Error(message);
     }
+
+    // Throws a readable message if any field is over its byte limit, so nothing
+    // is ever silently truncated. The form shows the message under the button.
+    const form = encodeBusinessForm({
+      name: payload.commitmentPreimage.name,
+      description: payload.commitmentPreimage.description,
+      contactInfo: payload.commitmentPreimage.contactInfo,
+      sector: payload.sector,
+      location: payload.location,
+    });
+
     setSubmitting(true);
     setError(null);
     try {
-      const form: BusinessForm = {
-        name: toBytes32(payload.commitmentPreimage.name),
-        description: toBytes32(payload.commitmentPreimage.description),
-        contactInfo: emptyBytes32(),
-        sector: toBytes32(payload.sector),
-        location: toBytes32(payload.location),
-      };
       await contractAPI.setBusinessForm(form);
       if (payload.track === 'TRACK_A') {
         await contractAPI.registerBusinessTrackA(payload.sector, payload.location);
@@ -39,7 +37,11 @@ export default function RegisterBusinessPage() {
         await contractAPI.registerBusinessTrackB(payload.sector, payload.location);
       }
     } catch (err) {
-      setError(isLikelySessionExpiry(err) ? 'Your wallet session expired — please reconnect and try again.' : 'Registration failed — check the console for details.');
+      setError(
+        isLikelySessionExpiry(err)
+          ? 'Your wallet session expired — please reconnect and try again.'
+          : 'Registration failed — check the console for details.',
+      );
       throw err;
     } finally {
       setSubmitting(false);

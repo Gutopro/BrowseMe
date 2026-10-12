@@ -1,5 +1,10 @@
 import { Contract, type Ledger, ledger, AttesterType } from "../../managed/browseme/contract/index.js";
-import { witnesses, createBrowseMePrivateState, type BrowseMePrivateState } from "../witnesses.js";
+import {
+  witnesses,
+  createBrowseMePrivateState,
+  FORM_LIMITS,
+  type BrowseMePrivateState,
+} from "../witnesses.js";
 import {
   createConstructorContext,
   createCircuitContext,
@@ -9,27 +14,34 @@ import { randomBytes } from "node:crypto";
 
 export const testAddress = (): Uint8Array => new Uint8Array(randomBytes(32));
 
-const pad32 = (str: string): Uint8Array => {
-  const out = new Uint8Array(32);
-  out.set(new TextEncoder().encode(str).slice(0, 32));
+// Pads a string into a fixed-size byte array (truncating), for readable tests.
+const padTo = (str: string, size: number): Uint8Array => {
+  const out = new Uint8Array(size);
+  out.set(new TextEncoder().encode(str).slice(0, size));
   return out;
 };
+const pad32 = (str: string): Uint8Array => padTo(str, 32);
+
+// Stand-ins for the encryption public keys the frontend publishes in a
+// handshake. The contract only stores them, so any 32 bytes will do.
+export const defaultInvestorKey = pad32("test-investor-public-key");
+export const defaultOwnerKey = pad32("test-owner-public-key");
 
 function defaultPrivateState(callerAddress: Uint8Array): BrowseMePrivateState {
   return createBrowseMePrivateState(
     callerAddress,
     {
-      name: pad32("Test Biz"),
-      description: pad32("A test business"),
-      contactInfo: pad32("test@example.com"),
-      sector: pad32("tech"),
-      location: pad32("lagos"),
+      name: padTo("Test Biz", FORM_LIMITS.name),
+      description: padTo("A test business", FORM_LIMITS.description),
+      contactInfo: padTo("test@example.com", FORM_LIMITS.contactInfo),
+      sector: padTo("tech", FORM_LIMITS.sector),
+      location: padTo("lagos", FORM_LIMITS.location),
     },
     {
-      name: pad32("Test Investor"),
-      region: pad32("lagos"),
-      businessId: pad32("biz-1"),
-      taxId: pad32("tax-1"),
+      name: padTo("Test Investor", FORM_LIMITS.name),
+      region: padTo("lagos", FORM_LIMITS.region),
+      businessId: padTo("biz-1", FORM_LIMITS.businessId),
+      taxId: padTo("tax-1", FORM_LIMITS.taxId),
     },
     // overwritten per call in submitAttestation
     { identitySecret: pad32("default-attester") },
@@ -83,7 +95,7 @@ export class BrowseMeSimulator {
     return result;
   }
 
-  // Third argument is now the attester's identity secret (private), not a commitment.
+  // Third argument is the attester's identity secret (private), not a commitment.
   submitAttestation(businessId: bigint, attesterType: AttesterType, identitySecret: Uint8Array) {
     this.circuitContext.currentPrivateState = {
       ...this.circuitContext.currentPrivateState,
@@ -96,17 +108,33 @@ export class BrowseMeSimulator {
     return result;
   }
 
-  initiateHandshake(nonce: Uint8Array, businessId: bigint) {
+  initiateHandshake(nonce: Uint8Array, businessId: bigint, investorKey: Uint8Array = defaultInvestorKey) {
     const { context, result } = this.contract.impureCircuits.initiateHandshake(
-      this.circuitContext, nonce, businessId
+      this.circuitContext, nonce, businessId, investorKey
     );
     this.circuitContext = context;
     return result;
   }
 
-  shake(nonce: Uint8Array) {
+  shake(nonce: Uint8Array, ownerKey: Uint8Array = defaultOwnerKey) {
     const { context, result } = this.contract.impureCircuits.shake(
-      this.circuitContext, nonce
+      this.circuitContext, nonce, ownerKey
+    );
+    this.circuitContext = context;
+    return result;
+  }
+
+  deliverInvestorDetails(nonce: Uint8Array, details: Uint8Array) {
+    const { context, result } = this.contract.impureCircuits.deliverInvestorDetails(
+      this.circuitContext, nonce, details
+    );
+    this.circuitContext = context;
+    return result;
+  }
+
+  deliverBusinessDetails(nonce: Uint8Array, details: Uint8Array) {
+    const { context, result } = this.contract.impureCircuits.deliverBusinessDetails(
+      this.circuitContext, nonce, details
     );
     this.circuitContext = context;
     return result;
@@ -122,5 +150,10 @@ export class BrowseMeSimulator {
 
   getLedger(): Ledger {
     return ledger(this.circuitContext.currentQueryContext.state);
+  }
+
+  // The private state as the witnesses left it (e.g. the saved commitment randomness).
+  getPrivateState(): BrowseMePrivateState {
+    return this.circuitContext.currentPrivateState;
   }
 }

@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
 import './RegistrationForm.css';
+import { FORM_LIMITS } from '../../../contracts/src/witnesses';
+import { byteLength } from './contract/codec';
 
 // Mirrors contracts/main.compact:
 //   export enum Track { TRACK_A, TRACK_B }
-//   export circuit registerBusinessTrackA(businessCommitment, sector, location): Uint<64>
-//   export circuit registerBusinessTrackB(businessCommitment, sector, location): Uint<64>
+//   export circuit registerBusinessTrackA(sector, location): Uint<64>
+//   export circuit registerBusinessTrackB(sector, location): Uint<64>
+// Field limits come from FORM_LIMITS (contracts/src/witnesses.ts), which must
+// match the Bytes<N> sizes of BusinessForm in main.compact. They are measured
+// in bytes, not characters.
+
 export type Track = 'TRACK_A' | 'TRACK_B';
 
 export interface BusinessFormValues {
@@ -13,10 +19,12 @@ export interface BusinessFormValues {
   sector: string;
   location: string;
   description: string;
+  contactInfo: string;
 }
 
 // What the form hands to its onSubmit handler. RegisterBusinessPage encodes
-// these strings into the Bytes<32> fields of BusinessForm and stages them via
+// these strings into the fixed-size fields of BusinessForm (see
+// encodeBusinessForm in contract/codec.ts) and stages them via
 // ContractAPI.setBusinessForm; the commitment is computed in-circuit.
 // sector/location are also passed to the register call as disclosed fields.
 export interface RegistrationPayload {
@@ -50,6 +58,12 @@ const emptyValues: BusinessFormValues = {
   sector: '',
   location: '',
   description: '',
+  contactInfo: '',
+};
+
+const over = (value: string, limit: number): string | null => {
+  const used = byteLength(value);
+  return used > limit ? `Too long: ${used} of ${limit} bytes` : null;
 };
 
 const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submitting = false, onHome }) => {
@@ -64,15 +78,32 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
   };
 
   const validate = (): boolean => {
-    const next: Partial<Record<keyof BusinessFormValues, string>> = {};
-    if (!values.name.trim()) next.name = 'Business name is required';
-    if (!values.sector) next.sector = 'Pick a sector';
-    if (!values.location.trim()) next.location = 'Location is required';
-    if (values.description.trim().length < 20) {
-      next.description = 'Give investors at least a couple sentences';
-    }
-    setErrors(next);
-    return Object.keys(next).length === 0;
+    const problems: Partial<Record<keyof BusinessFormValues, string>> = {};
+    const flag = (key: keyof BusinessFormValues, message: string | null) => {
+      if (message) problems[key] = message;
+    };
+
+    flag('name', !values.name.trim() ? 'Business name is required' : over(values.name, FORM_LIMITS.name));
+    flag('sector', !values.sector ? 'Pick a sector' : null);
+    flag(
+      'location',
+      !values.location.trim() ? 'Location is required' : over(values.location, FORM_LIMITS.location),
+    );
+    flag(
+      'description',
+      values.description.trim().length < 20
+        ? 'Give investors at least a couple sentences'
+        : over(values.description, FORM_LIMITS.description),
+    );
+    flag(
+      'contactInfo',
+      !values.contactInfo.trim()
+        ? 'Add a way for investors to reach you'
+        : over(values.contactInfo, FORM_LIMITS.contactInfo),
+    );
+
+    setErrors(problems);
+    return Object.keys(problems).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -86,6 +117,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
       commitmentPreimage: {
         name: values.name,
         description: values.description,
+        contactInfo: values.contactInfo,
       },
     };
 
@@ -153,8 +185,8 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
           </h1>
           <p className="bm-lede">
             Choose how you want to be discovered. Only your sector, location, and a
-            commitment hash go on-chain — everything else stays with you until you
-            shake on a deal.
+            commitment hash go on-chain — everything else stays in this browser until you
+            shake on a deal and choose to share it.
           </p>
         </div>
 
@@ -204,6 +236,9 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
               onChange={(e) => setField('name', e.target.value)}
               placeholder="e.g. Adaeze Textiles"
             />
+            <span className="bm-field-hint">
+              Private. {byteLength(values.name)}/{FORM_LIMITS.name} bytes
+            </span>
             {errors.name && <span className="bm-field-error">{errors.name}</span>}
           </div>
 
@@ -235,6 +270,9 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
                 onChange={(e) => setField('location', e.target.value)}
                 placeholder="e.g. Onitsha, Anambra"
               />
+              <span className="bm-field-hint">
+                Public. {byteLength(values.location)}/{FORM_LIMITS.location} bytes
+              </span>
               {errors.location && <span className="bm-field-error">{errors.location}</span>}
             </div>
           </div>
@@ -249,13 +287,32 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onSubmit, submittin
               className="bm-input bm-textarea"
               value={values.description}
               onChange={(e) => setField('description', e.target.value)}
-              placeholder="Stays private — hashed into your commitment, never shown publicly."
+              placeholder="Stays private — committed on-chain, never shown publicly."
               rows={5}
             />
             <span className="bm-field-hint">
-              Private — only investors you shake hands with will see this.
+              Private — only investors you shake hands with, and choose to share with, will see this.{' '}
+              {byteLength(values.description)}/{FORM_LIMITS.description} bytes
             </span>
             {errors.description && <span className="bm-field-error">{errors.description}</span>}
+          </div>
+
+          {/* ---- Contact ---- */}
+          <div className="bm-field">
+            <label className="bm-field-label" htmlFor="reg-contact">Contact</label>
+            <input
+              id="reg-contact"
+              className="bm-input"
+              type="text"
+              value={values.contactInfo}
+              onChange={(e) => setField('contactInfo', e.target.value)}
+              placeholder="Email, phone or WhatsApp"
+            />
+            <span className="bm-field-hint">
+              Private — shared only after a handshake, and only if you choose to.{' '}
+              {byteLength(values.contactInfo)}/{FORM_LIMITS.contactInfo} bytes
+            </span>
+            {errors.contactInfo && <span className="bm-field-error">{errors.contactInfo}</span>}
           </div>
 
           {submitError && (
