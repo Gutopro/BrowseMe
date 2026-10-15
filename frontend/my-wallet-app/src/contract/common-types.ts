@@ -18,10 +18,11 @@ export type BrowseMeCircuits =
   | 'shake'
   | 'deliverInvestorDetails'
   | 'deliverBusinessDetails'
+  | 'deliverAttestationDetails'
   | 'unshake';
 
-// Single source of truth lives in contracts/src/witnesses.ts (v0.3: adds the
-// saved commitment randomness and the details keypair).
+// Single source of truth lives in contracts/src/witnesses.ts (v0.4: adds the
+// attester form and its staged randomness).
 export type BrowseMePrivateState = ContractPrivateState;
 
 export const BROWSEME_PRIVATE_STATE_ID = 'browsemePrivateState';
@@ -40,6 +41,9 @@ export const AttesterCategory = {
   Education: 3,
 } as const;
 export type AttesterCategory = (typeof AttesterCategory)[keyof typeof AttesterCategory];
+
+// Display names, indexed by AttesterCategory value.
+export const ATTESTER_LABELS = ['Community', 'Religious', 'Union', 'Education'] as const;
 
 // NOT present in main.compact — a frontend-only role tag, previously
 // misnamed AttesterType, which collided with the contract's real

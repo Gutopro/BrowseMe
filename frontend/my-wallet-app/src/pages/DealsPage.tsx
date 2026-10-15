@@ -64,6 +64,11 @@ function ProgressCard({ b }: { b: OwnedBusiness }) {
             <span className="bm-tag">Track B</span>
             {b.tier > 0 && <span className="bm-tag bm-tag--gold">Tier {b.tier}</span>}
           </div>
+          <div className="bm-listing-meta">
+            <Link to={`/businesses/${b.id.toString()}/attest`} className="bm-btn bm-btn-ghost">
+              Manage attestations
+            </Link>
+          </div>
         </>
       )}
     </li>

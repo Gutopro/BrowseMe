@@ -3,6 +3,7 @@ import {
   witnesses,
   createBrowseMePrivateState,
   FORM_LIMITS,
+  type AttesterForm,
   type BrowseMePrivateState,
 } from "../witnesses.js";
 import {
@@ -22,10 +23,22 @@ const padTo = (str: string, size: number): Uint8Array => {
 };
 const pad32 = (str: string): Uint8Array => padTo(str, 32);
 
-// Stand-ins for the encryption public keys the frontend publishes in a
-// handshake. The contract only stores them, so any 32 bytes will do.
+// Stand-ins for the encryption public keys the frontend publishes. The
+// contract only stores them, so any 32 bytes will do.
 export const defaultInvestorKey = pad32("test-investor-public-key");
 export const defaultOwnerKey = pad32("test-owner-public-key");
+export const defaultAttesterKey = pad32("test-attester-ephemeral-key");
+
+// Must match ATTESTER_PACKAGE_BYTES in the frontend and Bytes<288> in main.compact.
+export const ATTESTER_PACKAGE_BYTES = 288;
+
+export const defaultAttesterForm = (): AttesterForm => ({
+  name: padTo("Test Attester", FORM_LIMITS.name),
+  organisation: padTo("Test Union", FORM_LIMITS.organisation),
+  position: padTo("Secretary", FORM_LIMITS.position),
+  contactInfo: padTo("union@example.com", FORM_LIMITS.contactInfo),
+  registrationId: padTo("REG-1", FORM_LIMITS.registrationId),
+});
 
 function defaultPrivateState(callerAddress: Uint8Array): BrowseMePrivateState {
   return createBrowseMePrivateState(
@@ -46,6 +59,13 @@ function defaultPrivateState(callerAddress: Uint8Array): BrowseMePrivateState {
     // overwritten per call in submitAttestation
     { identitySecret: pad32("default-attester") },
   );
+}
+
+export interface AttestationExtras {
+  form?: AttesterForm;
+  rand?: Uint8Array;
+  ephemeralKey?: Uint8Array;
+  details?: Uint8Array;
 }
 
 export class BrowseMeSimulator {
@@ -87,22 +107,36 @@ export class BrowseMeSimulator {
     return result;
   }
 
-  registerBusinessTrackB(sector: Uint8Array, location: Uint8Array) {
+  registerBusinessTrackB(sector: Uint8Array, location: Uint8Array, ownerKey: Uint8Array = defaultOwnerKey) {
     const { context, result } = this.contract.impureCircuits.registerBusinessTrackB(
-      this.circuitContext, sector, location
+      this.circuitContext, sector, location, ownerKey
     );
     this.circuitContext = context;
     return result;
   }
 
   // Third argument is the attester's identity secret (private), not a commitment.
-  submitAttestation(businessId: bigint, attesterType: AttesterType, identitySecret: Uint8Array) {
+  // The form, its randomness, the throwaway key and the package all default to
+  // test values; pass `extra` to control them. The randomness has to be staged
+  // before the call, exactly as the frontend does.
+  submitAttestation(
+    businessId: bigint,
+    attesterType: AttesterType,
+    identitySecret: Uint8Array,
+    extra: AttestationExtras = {},
+  ) {
     this.circuitContext.currentPrivateState = {
       ...this.circuitContext.currentPrivateState,
       attesterIdentity: { identitySecret },
+      attesterForm: extra.form ?? defaultAttesterForm(),
+      attesterFormRand: extra.rand ?? new Uint8Array(randomBytes(32)),
     };
     const { context, result } = this.contract.impureCircuits.submitAttestation(
-      this.circuitContext, businessId, attesterType
+      this.circuitContext,
+      businessId,
+      attesterType,
+      extra.ephemeralKey ?? defaultAttesterKey,
+      extra.details ?? new Uint8Array(ATTESTER_PACKAGE_BYTES).fill(5),
     );
     this.circuitContext = context;
     return result;
@@ -134,6 +168,14 @@ export class BrowseMeSimulator {
 
   deliverBusinessDetails(nonce: Uint8Array, details: Uint8Array) {
     const { context, result } = this.contract.impureCircuits.deliverBusinessDetails(
+      this.circuitContext, nonce, details
+    );
+    this.circuitContext = context;
+    return result;
+  }
+
+  deliverAttestationDetails(nonce: Uint8Array, details: Uint8Array) {
+    const { context, result } = this.contract.impureCircuits.deliverAttestationDetails(
       this.circuitContext, nonce, details
     );
     this.circuitContext = context;

@@ -3,27 +3,26 @@ pragma language_version >= 0.22;
 import CompactStandardLibrary;
 
 // ============================================================
-// BrowseMe — core contract (v0.3 — details sharing)
+// BrowseMe — core contract (v0.4 — attester identity forms)
 // Implements: §8.1 ledger state, §8.2 structs, §8.3 circuit
 // boundaries, and the security notes in §9.
 //
-// CHANGES FROM v0.2:
-// - Handshakes now carry an encryption public key for each party
-//   (investorKey set at initiateHandshake, ownerKey set at shake).
-// - After a handshake is SEALED, each party can deliver their private
-//   details to the other as an encrypted package stored on-chain
-//   (deliverInvestorDetails / deliverBusinessDetails). The contract
-//   never sees plaintext: packages are opaque bytes encrypted in the
-//   client to the counterparty's public key.
-// - Package contents include the commitment randomness, so the receiver
-//   can recompute the commitment (businessCommitmentOf /
-//   investorCommitmentOf, exported pure circuits) and compare it with
-//   the one registered on-chain.
-// - unshake removes both packages from current ledger state.
-// - investorDataStaged removed: nothing was ever staged, so the flag
-//   only misled readers.
-// - BusinessForm.description widened to Bytes<128> and contactInfo to
-//   Bytes<64> so the details shared after a handshake are usable.
+// CHANGES FROM v0.3:
+// - Attesters now submit an identity form (AttesterForm). The contract
+//   computes a commitment to it in-circuit (persistentCommit) and stores it
+//   on a per-attestation record, keyed by the attestation nullifier.
+// - The attester also sends an encrypted package (the form plus the
+//   commitment randomness) encrypted in the client to the business owner's
+//   key. The contract never sees plaintext.
+// - registerBusinessTrackB now publishes the owner's encryption public key
+//   (businessKeys) so attesters know who to encrypt to.
+// - After a handshake is SEALED the business owner can deliver the verified
+//   attester details to the investor (deliverAttestationDetails), encrypted
+//   to the investor's key. unshake removes it.
+// - attestationNullifiers removed: the attestations map, keyed by the same
+//   nullifier, now does the duplicate check.
+// - attesterCommitmentOf exported as a pure circuit so a browser can
+//   recompute a commitment from the form and randomness it decrypted.
 // ============================================================
 
 // ---- Enums ----
@@ -70,9 +69,30 @@ export struct InvestorForm {
   taxId: Bytes<32>
 }
 
-// PLACEHOLDER — the real identity an attester is vouching with.
+// The details an attester commits to when vouching for a business.
+export struct AttesterForm {
+  name: Bytes<32>,
+  organisation: Bytes<32>,
+  position: Bytes<32>,
+  contactInfo: Bytes<64>,
+  registrationId: Bytes<32>
+}
+
+// The secret an attester's one-way key and nullifier are derived from.
 struct AttesterIdentity {
   identitySecret: Bytes<32>
+}
+
+// One row per attestation, keyed by the attestation nullifier. The details
+// package is opaque ciphertext: [24-byte nonce][NaCl box], zero-padded,
+// encrypted by the attester to the business owner's key. publicKey is a
+// throwaway key made for this attestation, so it does not link to a wallet.
+struct AttestationRecord {
+  businessId: Uint<64>,
+  attesterType: AttesterType,
+  commitment: Bytes<32>,
+  publicKey: Bytes<32>,
+  details: Bytes<288>
 }
 
 // ---- Witnesses ----
@@ -82,24 +102,29 @@ witness businessFormData(): BusinessForm;         // private business form, supp
 witness businessFormRand(): Bytes<32>;            // fresh randomness for the business commitment (saved client-side)
 witness investorFormData(): InvestorForm;         // private investor form, supplied by the DApp
 witness investorFormRand(): Bytes<32>;            // fresh randomness for the investor commitment (saved client-side)
-witness attesterIdentityData(): AttesterIdentity; // private attester identity, supplied by the DApp
+witness attesterIdentityData(): AttesterIdentity; // private attester identity secret, supplied by the DApp
+witness attesterFormData(): AttesterForm;         // private attester form, supplied by the DApp
+witness attesterFormRand(): Bytes<32>;            // randomness chosen by the client BEFORE the call, because the
+                                                  // encrypted package passed to submitAttestation contains it
 
 // ---- Public ledger state (§8.1) ----
 
 export ledger businesses: Map<Uint<64>, BusinessListing>;
 export ledger nextBusinessId: Uint<64>;
 export ledger businessOwners: Map<Uint<64>, Bytes<32>>;      // businessId -> registering caller's address
+export ledger businessKeys: Map<Uint<64>, Bytes<32>>;        // Track B businessId -> owner's encryption public key
 export ledger investors: Map<Bytes<32>, Bytes<32>>;          // investorId (caller address) -> commitment
 export ledger attestationCounts: Map<Uint<64>, Uint<8>>;
 export ledger hasUnionAttestation: Map<Uint<64>, Boolean>;   // enforces §9.3 union requirement
-export ledger attestationNullifiers: Set<Bytes<32>>;         // prevents duplicate attestations (§9.3)
+export ledger attestations: Map<Bytes<32>, AttestationRecord>; // keyed by nullifier: prevents duplicates (§9.3)
 export ledger pendingHandshakes: Map<Bytes<32>, HandshakeState>; // keyed by nonce (§9.4: single-use)
 
 // Encrypted detail packages, keyed by handshake nonce. Layout (built and
 // parsed in the client): [24-byte nonce][NaCl box ciphertext], zero-padded.
 // The chain stores them but cannot read them.
-export ledger investorPackages: Map<Bytes<32>, Bytes<256>>;  // investor -> business
-export ledger businessPackages: Map<Bytes<32>, Bytes<384>>;  // business -> investor
+export ledger investorPackages: Map<Bytes<32>, Bytes<256>>;     // investor -> business
+export ledger businessPackages: Map<Bytes<32>, Bytes<384>>;     // business -> investor
+export ledger attestationPackages: Map<Bytes<32>, Bytes<1024>>; // business -> investor: up to 4 attester forms
 
 constructor() {
   nextBusinessId = 1;
@@ -119,6 +144,10 @@ export pure circuit businessCommitmentOf(form: BusinessForm, rand: Bytes<32>): B
 
 export pure circuit investorCommitmentOf(form: InvestorForm, rand: Bytes<32>): Bytes<32> {
   return persistentCommit<InvestorForm>(form, rand);
+}
+
+export pure circuit attesterCommitmentOf(form: AttesterForm, rand: Bytes<32>): Bytes<32> {
+  return persistentCommit<AttesterForm>(form, rand);
 }
 
 // ============================================================
@@ -172,10 +201,14 @@ export circuit registerBusinessTrackA(
 // ============================================================
 // Business registration — Track B (§4.2)
 // ============================================================
+//
+// ownerKey is the owner's encryption public key. Attesters encrypt their
+// details to it, so it has to be on-chain before the first attestation.
 
 export circuit registerBusinessTrackB(
   sector: Bytes<32>,
-  location: Bytes<32>
+  location: Bytes<32>,
+  ownerKey: Bytes<32>
 ): Uint<64> {
   const id = nextBusinessId;
   const caller = disclose(callerAddress());
@@ -196,6 +229,7 @@ export circuit registerBusinessTrackB(
     listed: false                  // not discoverable until threshold met (§4.2)
   });
   businessOwners.insert(id, caller);
+  businessKeys.insert(id, disclose(ownerKey));
   attestationCounts.insert(id, 0);
   hasUnionAttestation.insert(id, false);
   nextBusinessId = disclose((nextBusinessId + 1) as Uint<64>);
@@ -205,10 +239,16 @@ export circuit registerBusinessTrackB(
 // ============================================================
 // Attestations (§4.2, §9.3, §10.2)
 // ============================================================
+//
+// ephemeralKey is a throwaway public key made by the attester for this one
+// attestation. details is the attester's form plus the commitment randomness,
+// encrypted to the business owner's key (businessKeys) in the client.
 
 export circuit submitAttestation(
   businessId: Uint<64>,
-  attesterType: AttesterType
+  attesterType: AttesterType,
+  ephemeralKey: Bytes<32>,
+  details: Bytes<288>
 ): [] {
   const id = disclose(businessId);
   assert(businesses.member(id), "business does not exist");
@@ -225,13 +265,27 @@ export circuit submitAttestation(
   const attesterKey = persistentHash<Bytes<32>>(identity.identitySecret);
   // reject duplicate attester/business pairs via nullifier (§9.3)
   const nul = disclose(attestationNullifier(attesterKey, id));
-  assert(!attestationNullifiers.member(nul), "attester already attested for this business");
-  attestationNullifiers.insert(nul);
+  assert(!attestations.member(nul), "attester already attested for this business");
+
+  const form = attesterFormData();
+  const rand = attesterFormRand();
+  const attesterCommitment = disclose(
+    persistentCommit<AttesterForm>(form, rand)
+  );
+
+  const publicType = disclose(attesterType);
+
+  attestations.insert(nul, AttestationRecord {
+    businessId: id,
+    attesterType: publicType,
+    commitment: attesterCommitment,
+    publicKey: disclose(ephemeralKey),
+    details: disclose(details)
+  });
 
   const newCount = disclose((currentCount + 1) as Uint<8>);
   attestationCounts.insert(id, newCount);
 
-  const publicType = disclose(attesterType);
   if (publicType == AttesterType.UNION) {
     hasUnionAttestation.insert(id, true);
   }
@@ -325,7 +379,7 @@ export circuit shake(nonce: Bytes<32>, ownerKey: Bytes<32>): [] {
     ownerKey: key
   });
   // Detail delivery happens through deliverInvestorDetails /
-  // deliverBusinessDetails once the handshake is sealed.
+  // deliverBusinessDetails / deliverAttestationDetails once the handshake is sealed.
 }
 
 // ============================================================
@@ -364,6 +418,24 @@ export circuit deliverBusinessDetails(nonce: Bytes<32>, details: Bytes<384>): []
   businessPackages.insert(n, disclose(details));
 }
 
+// The owner re-encrypts the attester forms they could open and verify to the
+// investor's key. The investor checks each one against the on-chain
+// attestation commitments, so the contract does not need to.
+export circuit deliverAttestationDetails(nonce: Bytes<32>, details: Bytes<1024>): [] {
+  const n = disclose(nonce);
+  assert(pendingHandshakes.member(n), "no such handshake");
+
+  const hs = pendingHandshakes.lookup(n);
+  assert(hs.shaken, "handshake is not sealed");
+  assert(!hs.unshaken, "handshake was ended");
+
+  const caller = disclose(callerAddress());
+  assert(businessOwners.lookup(hs.businessId) == caller, "only the business owner can deliver attester details");
+  assert(!attestationPackages.member(n), "attester details already delivered");
+
+  attestationPackages.insert(n, disclose(details));
+}
+
 export circuit unshake(nonce: Bytes<32>): [] {
   const n = disclose(nonce);
   assert(pendingHandshakes.member(n), "no such handshake");
@@ -394,5 +466,8 @@ export circuit unshake(nonce: Bytes<32>): [] {
   }
   if (businessPackages.member(n)) {
     businessPackages.remove(n);
+  }
+  if (attestationPackages.member(n)) {
+    attestationPackages.remove(n);
   }
 }

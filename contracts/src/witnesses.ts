@@ -13,6 +13,9 @@ export const FORM_LIMITS = {
   region: 32,
   businessId: 32,
   taxId: 32,
+  organisation: 32,
+  position: 32,
+  registrationId: 32,
 } as const;
 
 export type BusinessForm = {
@@ -30,13 +33,22 @@ export type InvestorForm = {
   taxId: Uint8Array;      // Bytes<32>
 };
 
+export type AttesterForm = {
+  name: Uint8Array;           // Bytes<32>
+  organisation: Uint8Array;   // Bytes<32>
+  position: Uint8Array;       // Bytes<32>
+  contactInfo: Uint8Array;    // Bytes<64>
+  registrationId: Uint8Array; // Bytes<32>
+};
+
 export type AttesterIdentity = {
   identitySecret: Uint8Array;
 };
 
-// Encryption keypair used to exchange details after a handshake. Generated
-// in the frontend on first use; the public half goes on-chain in the
-// handshake, the secret half never leaves this browser's private state.
+// Encryption keypair used to exchange details after a handshake and to
+// receive attester details. Generated in the frontend on first use; the
+// public half goes on-chain, the secret half never leaves this browser's
+// private state.
 export type DetailsKeyPair = {
   publicKey: Uint8Array;
   secretKey: Uint8Array;
@@ -52,6 +64,11 @@ export type BrowseMePrivateState = {
   // Same, for investorForm.
   readonly investorFormRand: Uint8Array;
   readonly attesterIdentity: AttesterIdentity;
+  // The attester form and its randomness are staged by the client before each
+  // submitAttestation call (the encrypted package needs the randomness up
+  // front), so the witness reads them rather than generating them.
+  readonly attesterForm: AttesterForm;
+  readonly attesterFormRand: Uint8Array;
   readonly detailsKeyPair: DetailsKeyPair | null;
 };
 
@@ -72,6 +89,14 @@ export const emptyInvestorForm = (): InvestorForm => ({
   taxId: zeros(FORM_LIMITS.taxId),
 });
 
+export const emptyAttesterForm = (): AttesterForm => ({
+  name: zeros(FORM_LIMITS.name),
+  organisation: zeros(FORM_LIMITS.organisation),
+  position: zeros(FORM_LIMITS.position),
+  contactInfo: zeros(FORM_LIMITS.contactInfo),
+  registrationId: zeros(FORM_LIMITS.registrationId),
+});
+
 export const emptyAttesterIdentity = (): AttesterIdentity => ({
   identitySecret: zeros(32),
 });
@@ -84,6 +109,8 @@ export const emptyPrivateState = (callerAddress: Uint8Array): BrowseMePrivateSta
   investorForm: emptyInvestorForm(),
   investorFormRand: zeros(32),
   attesterIdentity: emptyAttesterIdentity(),
+  attesterForm: emptyAttesterForm(),
+  attesterFormRand: zeros(32),
   detailsKeyPair: null,
 });
 
@@ -100,6 +127,8 @@ export const createBrowseMePrivateState = (
   investorForm,
   investorFormRand: zeros(32),
   attesterIdentity,
+  attesterForm: emptyAttesterForm(),
+  attesterFormRand: zeros(32),
   detailsKeyPair: null,
 });
 
@@ -119,7 +148,7 @@ export const witnesses = {
     [privateState, privateState.businessForm],
 
   // Generates the commitment randomness AND saves it, so the commitment
-  // can be opened later. Before this change the randomness was discarded.
+  // can be opened later.
   businessFormRand: ({ privateState }: WitnessContext<any, BrowseMePrivateState>): [BrowseMePrivateState, Uint8Array] => {
     const rand = randomBytes(32);
     return [{ ...privateState, businessFormRand: rand }, rand];
@@ -135,4 +164,13 @@ export const witnesses = {
 
   attesterIdentityData: ({ privateState }: WitnessContext<any, BrowseMePrivateState>): [BrowseMePrivateState, AttesterIdentity] =>
     [privateState, privateState.attesterIdentity],
+
+  attesterFormData: ({ privateState }: WitnessContext<any, BrowseMePrivateState>): [BrowseMePrivateState, AttesterForm] =>
+    [privateState, privateState.attesterForm],
+
+  // Reads the randomness the client staged before the call. It cannot be
+  // generated here: the encrypted package passed to submitAttestation has to
+  // contain it, and the package is built before the circuit runs.
+  attesterFormRand: ({ privateState }: WitnessContext<any, BrowseMePrivateState>): [BrowseMePrivateState, Uint8Array] =>
+    [privateState, privateState.attesterFormRand],
 };

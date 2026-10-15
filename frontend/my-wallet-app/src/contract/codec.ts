@@ -8,6 +8,7 @@ import {
   FORM_LIMITS,
   type BusinessForm,
   type InvestorForm,
+  type AttesterForm,
 } from '../../../../contracts/src/witnesses.js';
 
 const encoder = new TextEncoder();
@@ -95,5 +96,23 @@ export function encodeInvestorForm(v: InvestorFormText): InvestorForm {
     region: encodeText(v.region, FORM_LIMITS.region, 'Region'),
     businessId: encodeText(v.businessId, FORM_LIMITS.businessId, 'Business ID'),
     taxId: encodeText(v.taxId, FORM_LIMITS.taxId, 'Tax ID'),
+  };
+}
+
+export interface AttesterFormText {
+  name: string;
+  organisation: string;
+  position: string;
+  contactInfo: string;
+  registrationId: string;
+}
+
+export function encodeAttesterForm(v: AttesterFormText): AttesterForm {
+  return {
+    name: encodeText(v.name, FORM_LIMITS.name, 'Name'),
+    organisation: encodeText(v.organisation, FORM_LIMITS.organisation, 'Organisation'),
+    position: encodeText(v.position, FORM_LIMITS.position, 'Role'),
+    contactInfo: encodeText(v.contactInfo, FORM_LIMITS.contactInfo, 'Contact'),
+    registrationId: encodeText(v.registrationId, FORM_LIMITS.registrationId, 'Registration or ID number'),
   };
 }

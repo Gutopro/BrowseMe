@@ -3,27 +3,32 @@
 // Thin wrapper over the deployed BrowseMe contract. Built the way Midnight's
 // own docs build a CompiledContract (make<...>().pipe(withWitnesses(...),
 // withCompiledFileAssets(...))), NOT the `as any`-cast pattern deploy.ts
-// uses. Exposes the 9 `export circuit`s declared in main.compact.
+// uses. Exposes the 10 `export circuit`s declared in main.compact.
 //
 // tierForCount and attestationNullifier are intentionally NOT wrapped here:
 // they are `pure circuit` (no `export`) in main.compact.
 //
 // v0.2: commitments are computed in-circuit from a witness-supplied private
-// form. Callers MUST call the matching set*Form/setAttesterIdentity method
-// immediately before the registration/attestation call.
+// form. Callers MUST call the matching set*Form method immediately before
+// the registration call.
 //
 // v0.3: state$ is shared and replays the latest contract state (shareReplay).
 //
 // v0.4 (details sharing):
 //   - initiateHandshake / shake generate (once) and publish this wallet's
-//     encryption key. Call sites are unchanged.
-//   - deliverMyDetails encrypts this wallet's registered details to the other
-//     party's key and stores the package on-chain; openCounterpartyDetails
-//     decrypts theirs and verifies it against their on-chain commitment.
-//   - join() merges any private state already stored in this browser instead
-//     of trusting the caller's initial state, so saved forms, commitment
-//     randomness and the details key survive reconnects.
+//     encryption key.
+//   - deliverMyDetails / openCounterpartyDetails exchange and verify details.
+//   - join() merges any private state already stored in this browser.
 //   - text encoding moved to codec.ts, which throws instead of truncating.
+//
+// v0.5 (attester identity forms):
+//   - registerBusinessTrackB publishes the owner's encryption key.
+//   - submitAttestation takes an identity form: it stages the form, builds an
+//     encrypted package for the business owner and sends both.
+//   - openAttesters (owner) decrypts and verifies the attester forms.
+//   - deliverAttesterBundle (owner) re-encrypts the verified forms to an
+//     investor after a sealed handshake; openAttesterBundle (investor) opens
+//     them and matches each against the on-chain attestation commitments.
 
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
@@ -32,24 +37,31 @@ import { witnesses, emptyPrivateState } from '../../../../contracts/src/witnesse
 import type {
   BusinessForm,
   InvestorForm,
-  AttesterIdentity,
+  AttesterForm,
   DetailsKeyPair,
 } from '../../../../contracts/src/witnesses.js';
 import {
   type BrowseMeProviders,
   type BrowseMePrivateState,
   BROWSEME_PRIVATE_STATE_ID,
-  AttesterCategory,
+  type AttesterCategory,
 } from './common-types';
 import { firstValueFrom, map, of, shareReplay, type Observable } from 'rxjs';
 import { decodeText, equalBytes, fromHex, isAllZero, toHex } from './codec';
 import {
   generateKeyPair,
+  randomBytes,
+  openAttesterDetails,
+  openAttestationBundle,
   openBusinessDetails,
   openInvestorDetails,
+  sealAttesterDetails,
+  sealAttestationBundle,
   sealBusinessDetails,
   sealInvestorDetails,
 } from './detailsCrypto';
+
+type LedgerView = ReturnType<typeof BrowseMe.ledger>;
 
 // Encodes the coarse, public sector/location arguments into the fixed 32-byte
 // arrays the register circuits expect. Truncates rather than throws;
@@ -186,12 +198,91 @@ export function dealsFrom(state$: Observable<any>, callerAddress: Uint8Array): O
   );
 }
 
+// ── Attestation records and the attest view ──────────────────────────
+
+export interface DetailField {
+  label: string;
+  value: string;
+}
+
+// One on-chain attestation: who vouched is hidden, only its type, the
+// commitment to the attester's form, and the encrypted package are public.
+export interface AttestationRecordView {
+  id: string; // nullifier, hex
+  type: number; // AttesterType: 0 community, 1 religious, 2 union, 3 education
+  commitment: Uint8Array;
+  publicKey: Uint8Array;
+  details: Uint8Array;
+}
+
+function attestationRecordsOf(view: LedgerView, businessId: bigint): AttestationRecordView[] {
+  const out: AttestationRecordView[] = [];
+  for (const [nul, rec] of view.attestations) {
+    if (rec.businessId !== businessId) continue;
+    out.push({
+      id: toHex(nul),
+      type: Number(rec.attesterType),
+      commitment: rec.commitment,
+      publicKey: rec.publicKey,
+      details: rec.details,
+    });
+  }
+  return out;
+}
+
+export interface AttestBusinessView {
+  businessId: bigint;
+  tier: number;
+  listed: boolean;
+  sector: string;
+  location: string;
+  attestationCount: number;
+  hasUnion: boolean;
+  isOwner: boolean;
+  // The owner's encryption public key, published at registration. null if the
+  // business was registered before attester forms existed.
+  ownerKey: Uint8Array | null;
+  records: AttestationRecordView[];
+}
+
+function attestBusinessViewOf(view: LedgerView, businessId: bigint, me: string): AttestBusinessView | null {
+  if (!view.businesses.member(businessId)) return null;
+  const b = view.businesses.lookup(businessId);
+  if (b.track === 0) return null; // attestations only apply to Track B
+
+  const owner = view.businessOwners.member(businessId) ? toHex(view.businessOwners.lookup(businessId)) : null;
+  return {
+    businessId,
+    tier: Number(b.tier),
+    listed: b.listed,
+    sector: decodeText(b.sector),
+    location: decodeText(b.location),
+    attestationCount: view.attestationCounts.member(businessId) ? Number(view.attestationCounts.lookup(businessId)) : 0,
+    hasUnion: view.hasUnionAttestation.member(businessId) ? view.hasUnionAttestation.lookup(businessId) : false,
+    isOwner: owner === me,
+    ownerKey: view.businessKeys.member(businessId) ? view.businessKeys.lookup(businessId) : null,
+    records: attestationRecordsOf(view, businessId),
+  };
+}
+
+// One Track B business as seen by the connected wallet. Emits null when the
+// business doesn't exist or isn't on Track B.
+export function attestBusinessFrom(
+  state$: Observable<any>,
+  businessId: bigint,
+  callerAddress: Uint8Array,
+): Observable<AttestBusinessView | null> {
+  const me = toHex(callerAddress);
+  return state$.pipe(map((contractState) => attestBusinessViewOf(BrowseMe.ledger(contractState.data), businessId, me)));
+}
+
 // ── Details view ─────────────────────────────────────────────────────
 
 export interface HandshakeDetailsView {
   nonce: Uint8Array;
   nonceHex: string;
   businessId: bigint;
+  track: 'A' | 'B';
   role: 'INVESTOR' | 'OWNER';
   status: HandshakeStatus;
   sector: string;
@@ -200,15 +291,19 @@ export interface HandshakeDetailsView {
   myPackageDelivered: boolean;
   // The other side's encrypted package addressed to me, once delivered.
   theirPackage: Uint8Array | null;
+  // My own encryption public key as published in this handshake.
+  myPublicKey: Uint8Array;
   // The other side's encryption public key from the handshake.
   theirPublicKey: Uint8Array;
   // The commitment the other side registered on-chain (to verify against).
   theirCommitment: Uint8Array | null;
-}
-
-export interface DetailField {
-  label: string;
-  value: string;
+  // Track B only. The owner's registration key (for opening attester forms).
+  businessKey: Uint8Array | null;
+  // Track B only. The business's on-chain attestation records.
+  attestationRecords: AttestationRecordView[];
+  // The encrypted attester bundle for this handshake, once the owner delivered
+  // it. For the owner this means "already shared"; for the investor, "received".
+  attestationBundle: Uint8Array | null;
 }
 
 // What this wallet is about to share, plus a reason it can't (if any).
@@ -220,6 +315,27 @@ export interface DeliveryPreview {
 
 export type OpenResult =
   | { ok: true; fields: DetailField[]; verified: boolean }
+  | { ok: false; reason: string };
+
+// One attester as shown on screen. verified means the form's commitment
+// matches an on-chain attestation record.
+export interface AttesterShown {
+  type: number; // -1 when no on-chain record matches
+  verified: boolean;
+  fields: DetailField[];
+}
+
+export type AttesterEntry =
+  | { ok: true; id: string; type: number; verified: boolean; fields: DetailField[] }
+  | { ok: false; id: string; type: number; reason: string };
+
+export interface AttesterListing {
+  problem: string | null;
+  entries: AttesterEntry[];
+}
+
+export type AttesterBundleResult =
+  | { ok: true; attesters: AttesterShown[]; onChainCount: number }
   | { ok: false; reason: string };
 
 // One handshake as seen by one party. Emits null when the handshake doesn't
@@ -247,6 +363,7 @@ export function handshakeDetailsFrom(
 
       const role: 'INVESTOR' | 'OWNER' = asInvestor ? 'INVESTOR' : 'OWNER';
       const biz = view.businesses.member(hs.businessId) ? view.businesses.lookup(hs.businessId) : null;
+      const track: 'A' | 'B' = biz && biz.track !== 0 ? 'B' : 'A';
 
       const theirPackages = role === 'INVESTOR' ? view.businessPackages : view.investorPackages;
       const myPackages = role === 'INVESTOR' ? view.investorPackages : view.businessPackages;
@@ -255,12 +372,14 @@ export function handshakeDetailsFrom(
         nonce,
         nonceHex: toHex(nonce),
         businessId: hs.businessId,
+        track,
         role,
         status: hs.unshaken ? 'ENDED' : hs.shaken ? 'SEALED' : 'PENDING',
         sector: biz ? decodeText(biz.sector) : '',
         location: biz ? decodeText(biz.location) : '',
         myPackageDelivered: myPackages.member(nonce),
         theirPackage: theirPackages.member(nonce) ? theirPackages.lookup(nonce) : null,
+        myPublicKey: role === 'INVESTOR' ? hs.investorKey : hs.ownerKey,
         theirPublicKey: role === 'INVESTOR' ? hs.ownerKey : hs.investorKey,
         theirCommitment:
           role === 'INVESTOR'
@@ -270,6 +389,9 @@ export function handshakeDetailsFrom(
             : view.investors.member(hs.investorId)
               ? view.investors.lookup(hs.investorId)
               : null,
+        businessKey: view.businessKeys.member(hs.businessId) ? view.businessKeys.lookup(hs.businessId) : null,
+        attestationRecords: track === 'B' ? attestationRecordsOf(view, hs.businessId) : [],
+        attestationBundle: view.attestationPackages.member(nonce) ? view.attestationPackages.lookup(nonce) : null,
       };
     }),
   );
@@ -290,12 +412,22 @@ const investorFields = (f: InvestorForm): DetailField[] => [
   { label: 'Tax ID', value: decodeText(f.taxId) },
 ];
 
+const attesterFields = (f: AttesterForm): DetailField[] => [
+  { label: 'Name', value: decodeText(f.name) },
+  { label: 'Organisation', value: decodeText(f.organisation) },
+  { label: 'Role', value: decodeText(f.position) },
+  { label: 'Contact', value: decodeText(f.contactInfo) },
+  { label: 'Registration / ID number', value: decodeText(f.registrationId) },
+];
+
 const OLD_REGISTRATION_PROBLEM =
   'The details stored in this browser predate verifiable commitments. Register again to share them.';
 const MISMATCH_PROBLEM =
   'The details stored in this browser don’t match what this wallet committed on-chain. This happens when another registration from this wallet replaced them, or when browser storage was cleared.';
 const KEY_PROBLEM =
   'The encryption key for this handshake isn’t in this browser, so the other side could not decrypt a package from you.';
+const OWNER_KEY_PROBLEM =
+  'The encryption key this business was registered with isn’t in this browser, so attester details can’t be opened here. Open this page from the browser profile that registered the business.';
 
 interface MineResolved {
   role: 'INVESTOR' | 'OWNER';
@@ -305,6 +437,10 @@ interface MineResolved {
   theirPublicKey: Uint8Array;
   privateState: BrowseMePrivateState;
 }
+
+type RecordOpening =
+  | { ok: true; record: AttestationRecordView; form: AttesterForm; rand: Uint8Array; verified: boolean }
+  | { ok: false; record: AttestationRecordView; reason: string };
 
 // Type alias keeps make()'s generic argument short. Passing the REAL typed
 // constructor (BrowseMe.Contract<BrowseMePrivateState>) here — not
@@ -370,7 +506,12 @@ export class ContractAPI {
     initialPrivateState: Pick<BrowseMePrivateState, 'callerAddress'>,
   ): Promise<ContractAPI> {
     const callerAddress = initialPrivateState.callerAddress;
+
+    // The private state provider is scoped per contract address. It must be
+    // told which one before any get/set, otherwise it throws "Contract
+    // address not set".
     providers.privateStateProvider.setContractAddress(contractAddress);
+
     const existing = await providers.privateStateProvider.get(BROWSEME_PRIVATE_STATE_ID);
     const base = emptyPrivateState(callerAddress);
     const privateState: BrowseMePrivateState = existing ? { ...base, ...existing, callerAddress } : base;
@@ -407,11 +548,15 @@ export class ContractAPI {
     await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, { ...current, businessForm: form });
   }
 
-  async setAttesterIdentity(identity: AttesterIdentity): Promise<void> {
+  // Stages everything submitAttestation's witnesses read: the attester's
+  // identity secret, their form, and the commitment randomness.
+  private async stageAttestation(form: AttesterForm, rand: Uint8Array, identitySecret: Uint8Array): Promise<void> {
     const current = await this.getPrivateState();
     await this.providers.privateStateProvider.set(BROWSEME_PRIVATE_STATE_ID, {
       ...current,
-      attesterIdentity: identity,
+      attesterIdentity: { identitySecret },
+      attesterForm: form,
+      attesterFormRand: rand,
     });
   }
 
@@ -444,14 +589,39 @@ export class ContractAPI {
     return this.deployedContract.callTx.registerBusinessTrackA(toBytes32(sector), toBytes32(location));
   }
 
-  /** main.compact: registerBusinessTrackB(sector, location): Uint<64>. Call setBusinessForm() first. */
+  /**
+   * main.compact: registerBusinessTrackB(sector, location, ownerKey): Uint<64>.
+   * Call setBusinessForm() first. The owner's encryption public key is
+   * generated here if needed, so attesters can encrypt their details to it.
+   */
   async registerBusinessTrackB(sector: string, location: string) {
-    return this.deployedContract.callTx.registerBusinessTrackB(toBytes32(sector), toBytes32(location));
+    const keyPair = await this.ensureDetailsKeyPair();
+    return this.deployedContract.callTx.registerBusinessTrackB(
+      toBytes32(sector),
+      toBytes32(location),
+      keyPair.publicKey,
+    );
   }
 
-  /** main.compact: submitAttestation(businessId, attesterType). Call setAttesterIdentity() first. */
-  async submitAttestation(businessId: bigint, attesterType: AttesterCategory) {
-    return this.deployedContract.callTx.submitAttestation(businessId, attesterType);
+  /**
+   * main.compact: submitAttestation(businessId, attesterType, ephemeralKey, details).
+   *
+   * Stages the attester's form, builds the package encrypted to the business
+   * owner's key (with a throwaway keypair made for this one attestation, so
+   * the attestation doesn't link to this wallet's other activity) and submits.
+   */
+  async submitAttestation(
+    businessId: bigint,
+    attesterType: AttesterCategory,
+    form: AttesterForm,
+    ownerKey: Uint8Array,
+    identitySecret: Uint8Array,
+  ) {
+    const rand = randomBytes(32);
+    const ephemeral = generateKeyPair();
+    const details = sealAttesterDetails(form, rand, ownerKey, ephemeral.secretKey);
+    await this.stageAttestation(form, rand, identitySecret);
+    return this.deployedContract.callTx.submitAttestation(businessId, attesterType, ephemeral.publicKey, details);
   }
 
   /**
@@ -611,5 +781,116 @@ export class ContractAPI {
       verified = false;
     }
     return { ok: true, verified, fields: investorFields(opened.form) };
+  }
+
+  // ── Attester details ─────────────────────────────────────────────────
+
+  // Owner side: decrypts each attestation record's package with this
+  // browser's secret key and checks it against the record's commitment.
+  private async openRecords(
+    ownerKey: Uint8Array | null,
+    records: AttestationRecordView[],
+  ): Promise<{ problem: string | null; openings: RecordOpening[] }> {
+    const keyPair = (await this.getPrivateState()).detailsKeyPair;
+    if (!keyPair || !ownerKey || !equalBytes(keyPair.publicKey, ownerKey)) {
+      return { problem: OWNER_KEY_PROBLEM, openings: [] };
+    }
+
+    const openings = records.map((record): RecordOpening => {
+      const opened = openAttesterDetails(record.details, record.publicKey, keyPair.secretKey);
+      if (!opened) {
+        return { ok: false, record, reason: 'Could not decrypt this attester’s details.' };
+      }
+      let verified = false;
+      try {
+        const commitment = BrowseMe.pureCircuits.attesterCommitmentOf(opened.form, opened.rand);
+        verified = equalBytes(commitment, record.commitment);
+      } catch {
+        verified = false;
+      }
+      return { ok: true, record, form: opened.form, rand: opened.rand, verified };
+    });
+    return { problem: null, openings };
+  }
+
+  /**
+   * Business owner: the attester forms for a business, decrypted in this
+   * browser and checked against each attestation's on-chain commitment.
+   */
+  async openAttesters(ownerKey: Uint8Array | null, records: AttestationRecordView[]): Promise<AttesterListing> {
+    const { problem, openings } = await this.openRecords(ownerKey, records);
+    const entries = openings.map((o): AttesterEntry =>
+      o.ok
+        ? { ok: true, id: o.record.id, type: o.record.type, verified: o.verified, fields: attesterFields(o.form) }
+        : { ok: false, id: o.record.id, type: o.record.type, reason: o.reason },
+    );
+    return { problem, entries };
+  }
+
+  /** Owner, on the Details page: the attester forms that would be shared. */
+  async previewAttesters(view: HandshakeDetailsView): Promise<AttesterListing> {
+    return this.openAttesters(view.businessKey, view.attestationRecords);
+  }
+
+  /**
+   * Owner: re-encrypts the attester forms that opened and verified to the
+   * investor's key and stores the bundle on-chain (deliverAttestationDetails).
+   * Forms that don't match their on-chain commitment are left out.
+   */
+  async deliverAttesterBundle(view: HandshakeDetailsView) {
+    if (view.role !== 'OWNER') throw new Error('Only the business owner can share attester details.');
+    if (view.status !== 'SEALED') throw new Error('The handshake is not sealed yet.');
+
+    const keyPair = (await this.getPrivateState()).detailsKeyPair;
+    if (!keyPair || !equalBytes(keyPair.publicKey, view.myPublicKey)) throw new Error(KEY_PROBLEM);
+
+    const { problem, openings } = await this.openRecords(view.businessKey, view.attestationRecords);
+    if (problem) throw new Error(problem);
+
+    const entries = openings.flatMap((o) => (o.ok && o.verified ? [{ form: o.form, rand: o.rand }] : []));
+    if (entries.length === 0) {
+      throw new Error('There are no attester details with a matching on-chain commitment to share yet.');
+    }
+
+    const bundle = sealAttestationBundle(entries, view.theirPublicKey, keyPair.secretKey);
+    return this.deployedContract.callTx.deliverAttestationDetails(view.nonce, bundle);
+  }
+
+  /**
+   * Investor: decrypts the bundle the owner delivered and matches each form
+   * against the business's on-chain attestation commitments.
+   */
+  async openAttesterBundle(view: HandshakeDetailsView): Promise<AttesterBundleResult> {
+    if (!view.attestationBundle) {
+      return { ok: false, reason: 'The owner has not shared attester details yet.' };
+    }
+
+    const keyPair = (await this.getPrivateState()).detailsKeyPair;
+    if (!keyPair) {
+      return { ok: false, reason: 'This browser has no encryption key for your handshakes.' };
+    }
+
+    const opened = openAttestationBundle(view.attestationBundle, view.theirPublicKey, keyPair.secretKey);
+    if (!opened) {
+      return {
+        ok: false,
+        reason: 'Could not decrypt the attester details. They may not be addressed to the key stored in this browser.',
+      };
+    }
+
+    const attesters = opened.map(({ form, rand }): AttesterShown => {
+      let commitment: Uint8Array | null = null;
+      try {
+        commitment = BrowseMe.pureCircuits.attesterCommitmentOf(form, rand);
+      } catch {
+        commitment = null;
+      }
+      const match = commitment
+        ? view.attestationRecords.find((r) => equalBytes(r.commitment, commitment!))
+        : undefined;
+      return { type: match ? match.type : -1, verified: !!match, fields: attesterFields(form) };
+    });
+
+    return { ok: true, attesters, onChainCount: view.attestationRecords.length };
   }
 }
